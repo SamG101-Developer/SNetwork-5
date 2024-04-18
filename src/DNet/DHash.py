@@ -1,8 +1,8 @@
-from src.DNet.DNodeAddress import DNodeAddress
 from src.DNet.DNetwork import DNetworkConfig
 from src.Utils.Types import Bytes, Int
 
 from hashlib import md5
+from ipaddress import IPv6Address
 
 
 class DHash:
@@ -11,5 +11,5 @@ class DHash:
         return int(md5(value).hexdigest(), 16) % N
 
     @staticmethod
-    def hash_address(address: DNodeAddress) -> Int:
-        return DHash.hash(address.ip.packed + str(address.port).encode(), DNetworkConfig.N)
+    def hash_address(address: IPv6Address) -> Int:
+        return DHash.hash(address.packed, DNetworkConfig.N)
