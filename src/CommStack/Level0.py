@@ -165,7 +165,7 @@ class Level0(LevelN):
 
     def _listen(self) -> None:
         # Bind the socket to the node's address.
-        self._socket.bind((self._this_node.exploded, self.port))
+        self._socket.bind((self._this_node.exploded, self._port))
         self._state = Level0State.ONLINE
 
         # Keep listening whilst the node is online.
@@ -235,7 +235,7 @@ class Level0(LevelN):
         self._send_file_backups(self._next_node)
 
     @property
-    def port(self) -> Int:
+    def _port(self) -> Int:
         return 40000
 
     def _handle_command(self, address: IPv6Address, data: Dict) -> None:
@@ -345,7 +345,7 @@ class Level0(LevelN):
     def _send_message(self, address: IPv6Address, protocol: Level0Protocol, data: Optional[Dict] = None) -> None:
         data = pickle.dumps({"cmd": protocol.value, **(data or {})})
         if self._state == Level0State.ONLINE:
-            self._socket.sendto(data, (address.exploded, self.port))
+            self._socket.sendto(data, (address.exploded, self._port))
 
     def _send_file(self, address: IPv6Address, file_name: Str) -> None:
         data = open(file_name, "rb").read()

@@ -74,7 +74,7 @@ class Level1(LevelN):
 
     def _listen(self) -> None:
         # Bind the insecure socket to port 40000.
-        self._socket.bind(("::", self.port))
+        self._socket.bind(("::", self._port))
 
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
@@ -111,14 +111,14 @@ class Level1(LevelN):
         encoded_data = json.dumps(data).encode()
         that_static_public_key = PubKey.from_bytes(self._level0.get(f"Certificate-{connection.identifier}"))
         encoded_data = KEM.kem_wrap(that_static_public_key, encoded_data).encapsulated
-        self._socket.sendto(encoded_data, (connection.address.exploded, self.port))
+        self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
-    def port(self) -> Int:
+    def _port(self) -> Int:
         return 40001
 
-    def connect(self, address: IPv6Address, that_identifier: Bytes) -> Optional[Connection]:
-        token = os.urandom(32)
+    def connect(self, address: IPv6Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
+        token = token or os.urandom(32)
 
         # Prepare static and ephemeral keys.
         this_ephemeral_key_pair = KEM.generate_key_pair()

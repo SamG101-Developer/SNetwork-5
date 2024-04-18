@@ -41,5 +41,5 @@ class LevelN(ABC):
 
     @abstractmethod
     @property
-    def port(self) -> Int:
+    def _port(self) -> Int:
         ...
