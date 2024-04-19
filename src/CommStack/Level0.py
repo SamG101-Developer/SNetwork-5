@@ -61,7 +61,7 @@ class Level0(LevelN):
 
     _files: List[Str]
     _backup_files: List[Str]
-    _node_info_files: List[Dict]
+    _node_info_files: List[Str]
     _key_owners: Dict[Int, IPv4Address]
     _directory: Str
 

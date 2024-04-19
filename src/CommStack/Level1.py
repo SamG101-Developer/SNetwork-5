@@ -73,7 +73,7 @@ class Level1(LevelN):
             Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 
     def _handle_command(self, address: IPv4Address, request: Json) -> None:
-        # Check that the request has a command and token, and parse the token.
+        # Check the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
             return
         token = bytes.fromhex(request["token"])
