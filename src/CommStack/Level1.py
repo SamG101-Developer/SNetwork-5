@@ -126,7 +126,7 @@ class Level1(LevelN):
             "ephemeral_public_key_signature": this_ephemeral_public_key_signed.hex()}
 
         # Send the request and store the conversation state.
-        connection = Connection(address, that_identifier, token, Level1Protocol.RequestConnection, None, this_ephemeral_key_pair.public_key.bytes, this_ephemeral_key_pair.secret_key.bytes, None)
+        connection = Connection(address, that_identifier, token, Level1Protocol.RequestConnection, None, this_ephemeral_key_pair.public_key, this_ephemeral_key_pair.secret_key, None)
         self._conversations[token] = connection
         self._send(connection, request)
 
@@ -140,7 +140,7 @@ class Level1(LevelN):
 
         # Get the identifier and key information, and get the certificate from the DHT.
         that_identifier = bytes.fromhex(request["identifier"])
-        that_ephemeral_public_key = bytes.fromhex(request["ephemeral_public_key"])
+        that_ephemeral_public_key = PubKey.from_bytes(bytes.fromhex(request["ephemeral_public_key"]))
         that_ephemeral_public_key_signature = bytes.fromhex(request["ephemeral_public_key_signature"])
         that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
@@ -148,7 +148,7 @@ class Level1(LevelN):
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
 
         # Verify the signed ephemeral public key, and reject the connection if there's an invalid signature.
-        if not Signer.verify(that_static_public_key, that_ephemeral_public_key, that_ephemeral_public_key_signature, self._this_identifier):
+        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.bytes, that_ephemeral_public_key_signature, self._this_identifier):
             response = {
                 "command": Level1Protocol.RejectConnection.value,
                 "token": request["token"],
