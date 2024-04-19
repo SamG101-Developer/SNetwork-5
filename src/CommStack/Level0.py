@@ -93,6 +93,8 @@ class Level0(LevelN):
 
         if not os.path.exists(self._directory):
             os.makedirs(self._directory)
+        for file in os.listdir(self._directory):
+            self._reg_file(file)
 
         # Start threads.
         Thread(target=self._listen).start()
