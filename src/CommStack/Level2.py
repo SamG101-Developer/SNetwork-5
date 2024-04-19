@@ -152,14 +152,8 @@ class Level2(LevelN):
     def create_route(self) -> None:
         logging.debug("Creating a new route.")
 
-        # Create a new route, with this node as the client node.
-        this_address = my_address()
-        this_identifier = KeyManager.get_identifier()
-        this_node = RouteNode(address=this_address, identifier=this_identifier, public_key=None, e2e_master_key=None)
-        self._route = Route(token=os.urandom(32), nodes=[this_node])
-
-        # Connect to self to allow for route extension from this node.
-        self_connection = self._level1.connect(this_address, this_identifier)
+        # Create a new route.
+        self._route = Route(token=os.urandom(32), nodes=[])
 
         # Extend the route to 3 more nodes.
         while len(self._route.nodes) < 4:
@@ -174,7 +168,17 @@ class Level2(LevelN):
             }
 
             # Tunnel the message to the current final node, to extend the route.
-            self._tunnel_message_forward(self._route.token, self._route.nodes[-1].identifier, request)
+            if self._route.nodes:
+                self._tunnel_message_forward(self._route.token, self._route.nodes[-1].identifier, request)
+            else:
+                entry_connection = self._level1.connect(next_node.address, next_node.identifier)
+                request = {
+                    "command": Level2Protocol.GetEphemeralPubKeyForKEM.value,
+                    "token": entry_connection.token.hex(),
+                    "route_token": request["route_token"]
+                }
+                self._send(entry_connection, request)
+
             self._route.nodes.append(next_node)
 
             # Loop until either the node is confirmed (encryption key set), or needs to be removed.
