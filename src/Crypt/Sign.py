@@ -4,11 +4,10 @@ import logging
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.padding import PSS, MGF1
-from cryptography.hazmat.primitives.hashes import SHA3_224
 from cryptography.exceptions import InvalidSignature
 
 from src.Crypt.AsymmetricKeys import SecKey, PubKey
-from src.Crypt.Hash import Hasher
+from src.Crypt.Hash import Hasher, SHA3_224
 from src.Crypt.KeyPair import KeyPair
 from src.Utils.Types import Bytes, Bool
 
@@ -45,7 +44,7 @@ class Signer:
         recipient_id = message[-SHA3_224.digest_size:]
 
         try:
-            assert recipient_id == my_id, f"Recipient ID {str(recipient_id)[:20]}... != {str(my_id)[:20]}..."
+            assert recipient_id == Hasher.hash(my_id, SHA3_224()), f"Recipient ID {str(recipient_id)[:20]}... != {str(my_id)[:20]}..."
             their_static_public_key.verify(
                 data=message,
                 signature=signature,
