@@ -176,11 +176,12 @@ class Level1(LevelN):
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
+        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{connection.identifier.hex()}.key"))["pub_key"]))
 
         # Verify the challenge received from the accepting node.
         signed_challenge = bytes.fromhex(request["challenge_signature"])
         challenge = bytes.fromhex(request["challenge"])
-        if not Signer.verify(connection.ephemeral_secret_key, challenge, signed_challenge, self._this_identifier):
+        if not Signer.verify(that_static_public_key, challenge, signed_challenge, self._this_identifier):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
                 "token": request["token"],
@@ -222,7 +223,7 @@ class Level1(LevelN):
 
         # Prepare static keys.
         that_identifier = connection.identifier
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{that_identifier.hex()}.key"))
+        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the challenge response.
         challenge = connection.challenge
@@ -258,7 +259,8 @@ class Level1(LevelN):
         connection = self._conversations[token]
 
         # Prepare static keys.
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{connection.identifier.hex()}.key"))
+        that_identifier = connection.identifier
+        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the signature on the kem wrapped master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_master_key"])
