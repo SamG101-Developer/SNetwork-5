@@ -195,7 +195,7 @@ class Level0(LevelN):
         while file_key not in self._key_owners:
             pass
         receiver = self._key_owners.get(file_key)
-        self._send_file(receiver, file_name_stripped)
+        self._send_file(receiver, file_name)
 
     def _node_in_domain(self, key: Int) -> Bool:
         next_node_key = DHash.hash_address(self._next_node)
@@ -411,7 +411,8 @@ class Level0(LevelN):
 
     def _send_file(self, address: IPv4Address, file_name: Str) -> None:
         data = open(file_name, "rb").read()
-        self._send_message(address, Level0Protocol.File, {"file_name": file_name, "file_bytes": data})
+        file_name_stripped = os.path.split(file_name)[1]
+        self._send_message(address, Level0Protocol.File, {"file_name": file_name_stripped, "file_bytes": data})
 
     def _send_file_backups(self, address: IPv4Address) -> None:
         self._send_message(address, Level0Protocol.BackupClear)
