@@ -1,36 +1,44 @@
-import pickle
-import os
-import time
 from enum import Enum
+from hashlib import md5
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
+import os, pickle, time
 
 from src.CommStack.LevelN import LevelN, LevelNProtocol
 from src.Utils.Atomic import AtomicInt
 from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float
-from src.DNet.DHash import DHash
+
+
+class DHash:
+    @staticmethod
+    def hash(value: Bytes) -> Int:
+        return int(md5(value).hexdigest(), 16) % 2 ** 16
+
+    @staticmethod
+    def hash_address(address: IPv6Address) -> Int:
+        return DHash.hash(address.packed)
 
 
 class Level0State(Enum):
-    STOP = 0
-    ONLINE = 1
+    Stop = 0
+    Online = 1
 
 
 class Level0Protocol(Enum, LevelNProtocol):
-    DNET_PING = 0
-    DNET_LOOKUP_OR_PREV = 1
-    DNET_LOOKUP_OR_NEXT = 2
-    DNET_LOOKUP_FOUND = 3
-    DNET_GET_NEIGHBOURS = 4
-    DNET_GET_NEIGHBOURS_RESPONSE = 5
-    DNET_UPDATE_PREV = 6
-    DNET_UPDATE_NEXT = 7
-    DNET_FILE = 8
-    DNET_FILE_REQUEST = 9
-    DNET_BACKUP_CLEAR = 10
-    DNET_MIGRATE_DATA = 11
-    DNET_FILE_BACKUP = 12
+    Ping = 0
+    LookupThenPrev = 1
+    LookupThenNext = 2
+    LookupFound = 3
+    GetNeighbours = 4
+    Neighbours = 5
+    UpdatePrev = 6
+    UpdateNext = 7
+    File = 8
+    FileRequest = 9
+    BackupClear = 10
+    MigrateData = 11
+    FileBackup = 12
 
 
 class Level0(LevelN):
@@ -54,7 +62,7 @@ class Level0(LevelN):
     def __init__(self):
         # General attributes.
         this_node = IPv6Address("::1")
-        self._state = Level0State.STOP
+        self._state = Level0State.Stop
         self._key = DHash.hash_address(this_node)
 
         # Node oriented attributes.
@@ -82,26 +90,33 @@ class Level0(LevelN):
         Thread(target=self._ping_prev_node).start()
         Thread(target=self._ping_next_node).start()
 
-    def join(self, joining_address: IPv6Address) -> None:
+    def join(self, joining_address: IPv6Address) -> Bool:
+        timeout = time.time()
+
         # Send a lookup message to the joining node.
-        self._send_message(joining_address, Level0Protocol.DNET_LOOKUP_OR_NEXT, {"key": self._key})
+        self._send_message(joining_address, Level0Protocol.LookupThenNext, {"key": self._key})
 
         while self._key not in self._key_owners:
+            if time.time() - timeout > 5:
+                return False
             pass
         address = self._key_owners.get(self._key)
 
         # Get the neighbours of the joining node.
-        self._send_message(address, Level0Protocol.DNET_GET_NEIGHBOURS)
+        self._send_message(address, Level0Protocol.GetNeighbours)
         while self._next_node == self._this_node:
             pass
 
         # Update the previous and next nodes of the joining node.
-        self._send_message(self._prev_node, Level0Protocol.DNET_UPDATE_NEXT)
-        self._send_message(self._next_node, Level0Protocol.DNET_UPDATE_PREV)
+        self._send_message(self._prev_node, Level0Protocol.UpdateNext)
+        self._send_message(self._next_node, Level0Protocol.UpdatePrev)
 
         # Handle file location changes
-        self._send_message(self._next_node, Level0Protocol.DNET_BACKUP_CLEAR)
-        self._send_message(self._next_node, Level0Protocol.DNET_MIGRATE_DATA)
+        self._send_message(self._next_node, Level0Protocol.BackupClear)
+        self._send_message(self._next_node, Level0Protocol.MigrateData)
+
+        # Success.
+        return True
 
     def leave(self) -> None:
         # Send all files to the next node.
@@ -109,23 +124,23 @@ class Level0(LevelN):
             self._send_file(self._next_node, file)
 
         # Update the previous and next nodes of the next and previous nodes.
-        self._send_message(self._next_node, Level0Protocol.DNET_UPDATE_PREV, {"address": self._prev_node})
-        self._send_message(self._prev_node, Level0Protocol.DNET_UPDATE_NEXT, {"address": self._next_node})
-        self._state = Level0State.STOP
+        self._send_message(self._next_node, Level0Protocol.UpdatePrev, {"address": self._prev_node})
+        self._send_message(self._prev_node, Level0Protocol.UpdateNext, {"address": self._next_node})
+        self._state = Level0State.Stop
 
     def kill(self) -> None:
-        self._state = Level0State.STOP
+        self._state = Level0State.Stop
 
     def get(self, file_name: Str) -> Bytes:
         file_key = DHash.hash(file_name.encode())
         if self._file_in_domain(file_key) and file_name in self._files:
             return open(os.path.join(self._directory, file_name), "rb").read()
 
-        self._send_message(self._next_node, Level0Protocol.DNET_LOOKUP_OR_PREV, {"key": file_key})
+        self._send_message(self._next_node, Level0Protocol.LookupThenPrev, {"key": file_key})
         while file_key not in self._key_owners:
             pass
         receiver = self._key_owners.get(file_key)
-        self._send_message(receiver, Level0Protocol.DNET_FILE_REQUEST, {"file_name": file_name})
+        self._send_message(receiver, Level0Protocol.FileRequest, {"file_name": file_name})
 
         while not os.path.exists(file_name):
             time.sleep(1)
@@ -133,7 +148,9 @@ class Level0(LevelN):
         return open(os.path.join(self._directory, file_name), "rb").read()
 
     def put(self, file_name: Str) -> None:
-        file_key = DHash.hash(file_name.encode())
+        file_name_stripped = os.path.split(file_name)[1]
+        file_name_stripped = os.path.splitext(file_name)[0]
+        file_key = DHash.hash(file_name_stripped.encode())
 
         # If the file is in the domain of the current node, save it.
         if self._file_in_domain(file_key):
@@ -142,7 +159,7 @@ class Level0(LevelN):
             return
 
         # Otherwise, send the file to the node whose domain it is in.
-        self._send_message(self._next_node, Level0Protocol.DNET_LOOKUP_OR_PREV, {"key": file_key})
+        self._send_message(self._next_node, Level0Protocol.LookupThenPrev, {"key": file_key})
 
         while file_key not in self._key_owners:
             pass
@@ -166,10 +183,10 @@ class Level0(LevelN):
     def _listen(self) -> None:
         # Bind the socket to the node's address.
         self._socket.bind((self._this_node.exploded, self._port))
-        self._state = Level0State.ONLINE
+        self._state = Level0State.Online
 
         # Keep listening whilst the node is online.
-        while self._state == Level0State.ONLINE and self._state == Level0State.ONLINE:
+        while self._state == Level0State.Online and self._state == Level0State.Online:
             try:
                 data, address = self._socket.recvfrom(1024)
                 data = pickle.loads(data)
@@ -183,15 +200,15 @@ class Level0(LevelN):
 
     def _ping_prev_node(self) -> None:
         # Keep pinging whilst the node is online.
-        while self._state == Level0State.ONLINE:
+        while self._state == Level0State.Online:
             # Wait for the previous node to be set.
             while self._prev_node == self._this_node:
                 time.sleep(self._heartbeat_interval)
 
             # If there is a previous node, and it is still responsive, keep pinging it.
-            while self._state == Level0State.ONLINE and self._prev_node_pings.get() < 3:
+            while self._state == Level0State.Online and self._prev_node_pings.get() < 3:
                 time.sleep(self._heartbeat_interval)
-                self._send_message(self._prev_node, Level0Protocol.DNET_PING)
+                self._send_message(self._prev_node, Level0Protocol.Ping)
                 self._prev_node_pings.inc()
 
             # The node has become unresponsive, so remove it from the network.
@@ -203,15 +220,15 @@ class Level0(LevelN):
             self._send_file_backups(self._next_node)
 
             # Handle node switching.
-            self._send_message(self._next_node, Level0Protocol.DNET_LOOKUP_OR_NEXT, {"key": self._key})
+            self._send_message(self._next_node, Level0Protocol.LookupThenNext, {"key": self._key})
             while self._next_node == self._this_node or self._key not in self._key_owners:
                 pass
             self._prev_node = self._key_owners.get(self._key)
-            self._send_message(self._prev_node, Level0Protocol.DNET_UPDATE_NEXT)
+            self._send_message(self._prev_node, Level0Protocol.UpdateNext)
 
     def _ping_next_node(self) -> None:
         # Keep pinging whilst the node is online.
-        while self._state == Level0State.ONLINE:
+        while self._state == Level0State.Online:
             # Wait for the next node to be set.
             while self._next_node == self._this_node:
                 time.sleep(self._heartbeat_interval)
@@ -219,7 +236,7 @@ class Level0(LevelN):
             # If there is a next node, and it is still responsive, keep pinging it.
             while self._next_node_pings.get() < 3:
                 time.sleep(self._heartbeat_interval)
-                self._send_message(self._next_node, Level0Protocol.DNET_PING)
+                self._send_message(self._next_node, Level0Protocol.Ping)
                 self._next_node_pings.inc()
 
             # The node has become unresponsive, so remove it from the network.
@@ -240,34 +257,34 @@ class Level0(LevelN):
 
     def _handle_command(self, address: IPv6Address, data: Dict) -> None:
         match Level0Protocol(data.get("cmd")):
-            case Level0Protocol.DNET_PING if address == self._prev_node:
+            case Level0Protocol.Ping if address == self._prev_node:
                 self._handle_ping_from_prev_node(address)
-            case Level0Protocol.DNET_PING if address == self._next_node:
+            case Level0Protocol.Ping if address == self._next_node:
                 self._handle_ping_from_next_node(address)
-            case Level0Protocol.DNET_LOOKUP_OR_PREV:
+            case Level0Protocol.LookupThenPrev:
                 self._lookup_key_in_domain_or_prev(address, data.get("send_to", address), data.get("key"))
-            case Level0Protocol.DNET_LOOKUP_OR_NEXT:
+            case Level0Protocol.LookupThenNext:
                 self._lookup_key_in_domain_or_next(address, data.get("send_to", address), data.get("key"))
-            case Level0Protocol.DNET_LOOKUP_FOUND:
+            case Level0Protocol.LookupFound:
                 self._handle_lookup_found(address, data.get("key"))
-            case Level0Protocol.DNET_GET_NEIGHBOURS:
+            case Level0Protocol.GetNeighbours:
                 self._handle_get_neighbours(address)
-            case Level0Protocol.DNET_GET_NEIGHBOURS_RESPONSE:
+            case Level0Protocol.Neighbours:
                 self._handle_get_neighbours_response(address, data.get("prev"), data.get("next"))
-            case Level0Protocol.DNET_FILE_REQUEST:
+            case Level0Protocol.FileRequest:
                 self._handle_file_request(address, data.get("file_name"))
-            case Level0Protocol.DNET_FILE:
+            case Level0Protocol.File:
                 self._handle_file(address, data.get("file_name"), data.get("file_bytes"))
-            case Level0Protocol.DNET_FILE_BACKUP:
+            case Level0Protocol.FileBackup:
                 self._handle_backup_file(address, data.get("file_name"), data.get("file_bytes"))
-            case Level0Protocol.DNET_UPDATE_PREV:
+            case Level0Protocol.UpdatePrev:
                 self._prev_node = data.get("address", address)
-            case Level0Protocol.DNET_UPDATE_NEXT:
+            case Level0Protocol.UpdateNext:
                 self._next_node = data.get("address", address)
                 self._send_file_backups(self._next_node)
-            case Level0Protocol.DNET_BACKUP_CLEAR:
+            case Level0Protocol.BackupClear:
                 self._backup_clear()
-            case Level0Protocol.DNET_MIGRATE_DATA:
+            case Level0Protocol.MigrateData:
                 self._handle_migration(address)
 
     def _handle_ping_from_prev_node(self, address: IPv6Address) -> None:
@@ -283,20 +300,20 @@ class Level0(LevelN):
     def _lookup_key_in_domain_or_prev(self, address: IPv6Address, send_to: IPv6Address, key: Int) -> None:
         # Check if the key is in the domain of the current node.
         if self._file_in_domain(key):
-            self._send_message(send_to, Level0Protocol.DNET_LOOKUP_FOUND, {"key": key})
+            self._send_message(send_to, Level0Protocol.LookupFound, {"key": key})
             return
 
         # Otherwise, check if the key is in the domain of the previous node.
-        self._send_message(self._prev_node, Level0Protocol.DNET_LOOKUP_OR_PREV, {"send_to": send_to, "key": key})
+        self._send_message(self._prev_node, Level0Protocol.LookupThenPrev, {"send_to": send_to, "key": key})
 
     def _lookup_key_in_domain_or_next(self, address: IPv6Address, send_to: IPv6Address, key: Int) -> None:
         # Check if the key is in the domain of the current node.
         if self._node_in_domain(key):
-            self._send_message(send_to, Level0Protocol.DNET_LOOKUP_FOUND, {"key": key})
+            self._send_message(send_to, Level0Protocol.LookupFound, {"key": key})
             return
 
         # Otherwise, check if the key is in the domain of the next node.
-        self._send_message(self._next_node, Level0Protocol.DNET_LOOKUP_OR_NEXT, {"send_to": send_to, "key": key})
+        self._send_message(self._next_node, Level0Protocol.LookupThenNext, {"send_to": send_to, "key": key})
 
     def _handle_lookup_found(self, address: IPv6Address, key: Int) -> None:
         # If the key is found, add it to the list of key owners.
@@ -304,7 +321,7 @@ class Level0(LevelN):
 
     def _handle_get_neighbours(self, address: IPv6Address) -> None:
         # Send the neighbours of the current node to the requesting node.
-        self._send_message(address, Level0Protocol.DNET_GET_NEIGHBOURS_RESPONSE, {"prev": self._this_node, "next": self._next_node})
+        self._send_message(address, Level0Protocol.Neighbours, {"prev": self._this_node, "next": self._next_node})
 
     def _handle_get_neighbours_response(self, address: IPv6Address, prev: IPv6Address, next: IPv6Address) -> None:
         # Set the previous and next nodes of the current node.
@@ -314,7 +331,7 @@ class Level0(LevelN):
     def _handle_file_request(self, address: IPv6Address, file_name: Str) -> None:
         # Send the file to the requesting node.
         file_bytes = open(os.path.join(self._directory, file_name), "rb").read()
-        self._send_message(address, Level0Protocol.DNET_FILE, {"file_name": file_name, "file_bytes": file_bytes})
+        self._send_message(address, Level0Protocol.File, {"file_name": file_name, "file_bytes": file_bytes})
 
     def _handle_file(self, address: IPv6Address, file_name: Str, file_bytes: Bytes) -> None:
         # Save the file to the current node.
@@ -344,19 +361,19 @@ class Level0(LevelN):
 
     def _send_message(self, address: IPv6Address, protocol: Level0Protocol, data: Optional[Dict] = None) -> None:
         data = pickle.dumps({"cmd": protocol.value, **(data or {})})
-        if self._state == Level0State.ONLINE:
+        if self._state == Level0State.Online:
             self._socket.sendto(data, (address.exploded, self._port))
 
     def _send_file(self, address: IPv6Address, file_name: Str) -> None:
         data = open(file_name, "rb").read()
-        self._send_message(address, Level0Protocol.DNET_FILE, {"file_name": file_name, "file_bytes": data})
+        self._send_message(address, Level0Protocol.File, {"file_name": file_name, "file_bytes": data})
 
     def _send_file_backups(self, address: IPv6Address) -> None:
-        self._send_message(address, Level0Protocol.DNET_BACKUP_CLEAR)
+        self._send_message(address, Level0Protocol.BackupClear)
         for file_name in self._backup_files:
             self._send_file_backup(address, file_name)
 
     def _send_file_backup(self, address: Optional[IPv6Address], file_name: Str) -> None:
         if address == self._this_node: return
         data = open(file_name, "rb").read()
-        self._send_message(address, Level0Protocol.DNET_FILE_BACKUP, {"file_name": file_name, "file_bytes": data})
+        self._send_message(address, Level0Protocol.FileBackup, {"file_name": file_name, "file_bytes": data})
