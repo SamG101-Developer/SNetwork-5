@@ -228,7 +228,7 @@ class Level2(LevelN):
 
         # Create an ephemeral key pair, and sign the public key with the static private key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
-        signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes, self._level1._conversations[token].identifier)
+        signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes)
         self._tunnel_keys[bytes.fromhex(request["route_token"])] = TunnelKeyGroup(ephemeral_secret_key=this_ephemeral_key_pair.secret_key.bytes, e2e_master_key=None)
 
         # Send the public key and signature to the previous node, who'll tunnel to the client.
@@ -252,7 +252,8 @@ class Level2(LevelN):
         # Verify the signature, and add the ephemeral public key to the route.
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_pub_key"])
         that_ephemeral_public_key_signed = bytes.fromhex(request["signature"])
-        if Signer.verify(that_static_public_key, that_ephemeral_public_key, that_ephemeral_public_key_signed, self._route.nodes[-2].identifier):
+
+        if Signer.verify(that_static_public_key, that_ephemeral_public_key, that_ephemeral_public_key_signed):
             self._route.nodes[-1].public_key = that_ephemeral_public_key
             self._route.nodes[-1].e2e_master_key = os.urandom(32)
             self._route.nodes[-1].state = Level2State.Accepted
@@ -277,7 +278,7 @@ class Level2(LevelN):
 
         # Save the master key, and sign a hash of it.
         self._tunnel_keys[bytes.fromhex(request["route_token"])].e2e_master_key = e2e_master_key
-        signed_master_key = Signer.sign(self._level1._this_static_secret_key, e2e_master_key, self._level1._conversations[token].identifier)
+        signed_master_key = Signer.sign(self._level1._this_static_secret_key, e2e_master_key)
 
         # Tunnel the signed hashed master key back for authentication.
         response = {

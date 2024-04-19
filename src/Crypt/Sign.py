@@ -29,7 +29,7 @@ class Signer:
         return KeyPair(secret_key, public_key)
 
     @staticmethod
-    def sign(my_static_private_key: SecKey, message: Bytes, their_id: Bytes) -> Bytes:
+    def sign(my_static_private_key: SecKey, message: Bytes) -> Bytes:
         # Add the hashed id to the message, hash it, and sign it.
         # message += Hasher.hash(their_id, SHA3_224())
 
@@ -40,7 +40,7 @@ class Signer:
         return signature
 
     @staticmethod
-    def verify(their_static_public_key: PubKey, message: Bytes, signature: Bytes, my_id: Bytes) -> Bool:
+    def verify(their_static_public_key: PubKey, message: Bytes, signature: Bytes) -> Bool:
         # Extract the message and reproduce the hash.
         # recipient_id = message[-SHA3_224.digest_size:]
 

@@ -112,7 +112,7 @@ class Level1(LevelN):
 
         # Prepare static and ephemeral keys.
         this_ephemeral_key_pair = KEM.generate_key_pair()
-        this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes, that_identifier)
+        this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes)
         logging.debug(f"This ephemeral public key: {this_ephemeral_key_pair.public_key.bytes.hex()}")
 
         # Create the handshake request.
@@ -147,7 +147,7 @@ class Level1(LevelN):
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
 
         # Verify the signed ephemeral public key, and reject the connection if there's an invalid signature.
-        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.bytes, that_ephemeral_public_key_signature, self._this_identifier):
+        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.bytes, that_ephemeral_public_key_signature):
             response = {
                 "command": Level1Protocol.RejectConnection.value,
                 "token": request["token"],
@@ -157,7 +157,7 @@ class Level1(LevelN):
 
         # Send a signed challenge for the requesting node to sign, to ensure that it has the private key.
         challenge = os.urandom(24) + struct.pack("!d", time.time())
-        challenge_signed = Signer.sign(self._this_static_secret_key, challenge, that_identifier)
+        challenge_signed = Signer.sign(self._this_static_secret_key, challenge)
         response = {
             "command": Level1Protocol.SignatureChallenge.value,
             "token": request["token"],
@@ -181,7 +181,7 @@ class Level1(LevelN):
         signed_challenge = bytes.fromhex(request["challenge_signature"])
         challenge = bytes.fromhex(request["challenge"])
         logging.debug("Verifying challenge")
-        if not Signer.verify(that_static_public_key, challenge, signed_challenge, self._this_identifier):
+        if not Signer.verify(that_static_public_key, challenge, signed_challenge):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
                 "token": request["token"],
@@ -203,7 +203,7 @@ class Level1(LevelN):
 
         # Sign the challenge response and send it to the accepting node.
         logging.debug("Signing challenge")
-        challenge_response = Signer.sign(self._this_static_secret_key, challenge, connection.identifier)
+        challenge_response = Signer.sign(self._this_static_secret_key, challenge)
         response = {
             "command": Level1Protocol.ChallengeResponse.value,
             "token": request["token"],
@@ -230,7 +230,7 @@ class Level1(LevelN):
         challenge = connection.challenge
         challenge_response = bytes.fromhex(request["challenge_response"])
         logging.debug("Verifying challenge response")
-        if not Signer.verify(that_static_public_key, challenge, challenge_response, self._this_identifier):
+        if not Signer.verify(that_static_public_key, challenge, challenge_response):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
                 "token": request["token"],
@@ -244,7 +244,7 @@ class Level1(LevelN):
         logging.debug(f"Master key: {master_key.hex()} ({len(master_key)} bytes)")
         kem_wrapped_master_key = KEM.kem_wrap(connection.ephemeral_public_key, master_key).encapsulated
         logging.debug(f"Wrapped master key: {kem_wrapped_master_key.hex()} ({len(kem_wrapped_master_key)} bytes)")
-        kem_wrapped_master_key_signed = Signer.sign(self._this_static_secret_key, kem_wrapped_master_key, that_identifier)
+        kem_wrapped_master_key_signed = Signer.sign(self._this_static_secret_key, kem_wrapped_master_key)
         response = {
             "command": Level1Protocol.AcceptConnection.value,
             "token": request["token"],
@@ -270,7 +270,7 @@ class Level1(LevelN):
         # Verify the signature on the kem wrapped master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_master_key"])
         kem_wrapped_master_key_signature = bytes.fromhex(request["kem_master_key_signature"])
-        if not Signer.verify(that_static_public_key, kem_wrapped_master_key, kem_wrapped_master_key_signature, self._this_identifier):
+        if not Signer.verify(that_static_public_key, kem_wrapped_master_key, kem_wrapped_master_key_signature):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
                 "token": request["token"],
