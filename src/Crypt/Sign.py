@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.padding import PSS, MGF1
 from cryptography.hazmat.primitives.hashes import SHA3_224
@@ -38,7 +40,7 @@ class Signer:
         return signature
 
     @staticmethod
-    def verify(their_static_public_key: PubKey, message: Bytes, signature: Bytes, my_id: Bytes, allow_stale: bool = False) -> Bool:
+    def verify(their_static_public_key: PubKey, message: Bytes, signature: Bytes, my_id: Bytes) -> Bool:
         # Extract the message and reproduce the hash.
         recipient_id = message[-SHA3_224.digest_size:]
 
@@ -51,5 +53,10 @@ class Signer:
                 algorithm=SHA3_224())
             return True
 
-        except (AssertionError, InvalidSignature):
+        except InvalidSignature:
+            logging.error("Invalid signature.")
+            return False
+
+        except AssertionError as e:
+            logging.error(e)
             return False
