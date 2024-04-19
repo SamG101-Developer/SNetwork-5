@@ -158,6 +158,9 @@ class Level2(LevelN):
         this_node = RouteNode(address=this_address, identifier=this_identifier, public_key=None, e2e_master_key=None)
         self._route = Route(token=os.urandom(32), nodes=[this_node])
 
+        # Connect to self to allow for route extension from this node.
+        self_connection = self._level1.connect(this_address, this_identifier)
+
         # Extend the route to 3 more nodes.
         while len(self._route.nodes) < 4:
             next_node = self._level1._level0.get_random_node(exclude_list=[node.address for node in self._route.nodes])
