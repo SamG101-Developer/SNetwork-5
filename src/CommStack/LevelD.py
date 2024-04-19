@@ -79,7 +79,7 @@ class LevelD(LevelN):
 
     def _handle_bootstrap(self, request: Json) -> None:
         # Get this node's identifier.
-        this_identifier = Hasher.hash(open("_crypt/public_key.pem").read().encode(), SHA3_256())
+        this_identifier = Hasher.hash(PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes, SHA3_256())
 
         # Popup message if there are currently no nodes in the network.
         node_ip_addresses = request["ips"]
