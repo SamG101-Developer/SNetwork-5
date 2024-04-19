@@ -86,6 +86,10 @@ class Level2(LevelN):
         self._route_backward_token_map = {}
         self._tunnel_keys = {}
 
+        Thread(target=self._listen).start()
+
+        logging.debug("Layer 2 Ready")
+
     def _listen(self) -> None:
         # Bind the secure socket to port 40001.
         self._socket.bind(("", self._port))

@@ -63,6 +63,8 @@ class Level1(LevelN):
         # Start listening on both sockets.
         Thread(target=self._listen).start()
 
+        logging.debug("Layer 1 Ready")
+
     def _listen(self) -> None:
         # Bind the insecure socket to port 40000.
         self._socket.bind(("", self._port))

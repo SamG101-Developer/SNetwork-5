@@ -30,6 +30,7 @@ class LevelD(LevelN):
         # Start listening for incoming connections and bootstrap the network.
         Thread(target=self._listen).start()
         Thread(target=self._bootstrap).start()
+        logging.debug("Layer D Ready")
 
     def _bootstrap(self) -> None:
         # Make sure keys exist.

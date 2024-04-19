@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 from enum import Enum
 from hashlib import md5
@@ -97,6 +98,8 @@ class Level0(LevelN):
         Thread(target=self._ping_prev_node).start()
         Thread(target=self._ping_next_node).start()
         Thread(target=self._refresh_key_cache).start()
+
+        logging.debug("Layer 0 Ready")
 
     def join(self, joining_address: IPv4Address) -> Bool:
         timeout = time.time()
