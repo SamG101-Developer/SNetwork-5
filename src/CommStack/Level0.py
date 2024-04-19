@@ -7,13 +7,10 @@ from socket import socket as Socket, AF_INET6, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
 import os, pickle, time
 
-from CommStack.LevelN import Connection
-from Utils.Types import Json
-
-from src.CommStack.LevelN import LevelN, LevelNProtocol
+from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
 from src.Utils.Address import my_address
 from src.Utils.Atomic import AtomicInt
-from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float
+from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float, Json
 from src.CONFIG import LEVEL_0_PORT
 
 
