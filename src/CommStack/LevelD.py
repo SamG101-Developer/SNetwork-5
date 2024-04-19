@@ -1,8 +1,9 @@
-import json
-import os
 from enum import Enum
 from ipaddress import IPv6Address
 from threading import Thread
+import json, os
+
+from PyQt6.QtWidgets import QErrorMessage
 
 from src.CommStack.Level0 import Level0
 from src.CommStack.LevelN import LevelN, LevelNProtocol
@@ -72,8 +73,15 @@ class LevelD(LevelN):
         # Ge this node's identifier.
         this_identifier = Hasher.hash(open("_crypt/public_key.pem").read().encode(), SHA3_256())
 
-        # Add the node to the DHT.
+        # Popup message if there are currently no nodes in the network.
         node_ip_addresses = request["ips"]
+        if not node_ip_addresses:
+            error_message = QErrorMessage()
+            error_message.showMessage("No nodes in the network.")
+            error_message.exec()
+            return
+
+        # Add the node to the DHT.
         for ip in node_ip_addresses:
             ip = IPv6Address(bytes.fromhex(ip))
             if self._level0.join(ip): break
