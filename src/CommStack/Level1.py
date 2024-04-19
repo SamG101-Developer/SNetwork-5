@@ -100,7 +100,7 @@ class Level1(LevelN):
     def _send(self, connection: Connection, data: Json) -> None:
         # Send the unencrypted data to the address.
         encoded_data = json.dumps(data).encode()
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"Certificate-{connection.identifier}"))
+        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{connection.identifier}.key"))
         encoded_data = KEM.kem_wrap(that_static_public_key, encoded_data).encapsulated
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
@@ -142,7 +142,7 @@ class Level1(LevelN):
         that_identifier = bytes.fromhex(request["identifier"])
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_public_key"])
         that_ephemeral_public_key_signature = bytes.fromhex(request["ephemeral_public_key_signature"])
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"Certificate-{that_identifier}"))
+        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{that_identifier}.key"))
 
         # Create the connection
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
@@ -222,7 +222,7 @@ class Level1(LevelN):
 
         # Prepare static keys.
         that_identifier = connection.identifier
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"Certificate-{that_identifier}"))
+        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{that_identifier}.key"))
 
         # Verify the challenge response.
         challenge = connection.challenge
@@ -258,7 +258,7 @@ class Level1(LevelN):
         connection = self._conversations[token]
 
         # Prepare static keys.
-        that_static_public_key = PubKey.from_bytes(self._level0.get(f"Certificate-{connection.identifier}"))
+        that_static_public_key = PubKey.from_bytes(self._level0.get(f"{connection.identifier}.key"))
 
         # Verify the signature on the kem wrapped master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_master_key"])
