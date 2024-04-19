@@ -176,6 +176,8 @@ class Level1(LevelN):
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
+
+        print(self._level0.get(f"{connection.identifier.hex()}.key"))
         that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{connection.identifier.hex()}.key"))["pub_key"]))
 
         # Verify the challenge received from the accepting node.
