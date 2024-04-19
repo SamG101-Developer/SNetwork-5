@@ -148,16 +148,16 @@ class Level0(LevelN):
         file_name_stripped = os.path.split(file_name)[1]
 
         file_key = DHash.hash(file_name_stripped.encode())
-        if self._file_in_domain(file_key) and file_name in self._files:
-            return open(os.path.join(self._directory, file_name), "rb").read()
+        if self._file_in_domain(file_key) and file_name_stripped in self._files:
+            return open(os.path.join(self._directory, file_name_stripped), "rb").read()
 
         self._send_message(self._next_node, Level0Protocol.LookupThenPrev, {"key": file_key})
         while file_key not in self._key_owners:
             pass
         receiver = self._key_owners.get(file_key)
-        self._send_message(receiver, Level0Protocol.FileRequest, {"file_name": file_name})
+        self._send_message(receiver, Level0Protocol.FileRequest, {"file_name": file_name_stripped})
 
-        while not os.path.exists(file_name):
+        while not os.path.exists(os.path.join(self._directory, file_name_stripped)):
             time.sleep(1)
 
         return open(os.path.join(self._directory, file_name), "rb").read()
