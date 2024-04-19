@@ -107,7 +107,7 @@ class Level2(LevelN):
                 continue
 
             # Decrypt the ciphertext with the key corresponding to the connection token.
-            decrypted_data = SymmetricEncryption.decrypt(connection.e2e_master_key, encrypted_data)
+            decrypted_data = SymmetricEncryption.decrypt(encrypted_data, connection.e2e_master_key)
             request = json.loads(decrypted_data)
 
             # Ensure that the connection token received matches the connection token embedded in the request.

@@ -1,12 +1,10 @@
-import os
-
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.padding import OAEP, MGF1
 from cryptography.hazmat.primitives.hashes import SHA256
 
 from src.Crypt.AsymmetricKeys import SecKey, PubKey
 from src.Crypt.KeyPair import KeyPair, KEMKeyPair
-from src.Utils.Types import Optional
+from src.Utils.Types import Bytes
 
 
 class KEM:
@@ -23,9 +21,8 @@ class KEM:
         return KeyPair(secret_key, public_key)
 
     @staticmethod
-    def kem_wrap(their_ephemeral_public_key: PubKey, decapsulated_key: Optional[bytes] = None) -> KEMKeyPair:
+    def kem_wrap(their_ephemeral_public_key: PubKey, decapsulated_key: Bytes) -> KEMKeyPair:
         # Encapsulate the key and package both the encapsulated and decapsulated keys into a KEMKeyPair object.
-        decapsulated_key = os.urandom(32)
         encapsulated_key = their_ephemeral_public_key.encrypt(
             plaintext=decapsulated_key,
             padding=OAEP(
@@ -36,7 +33,7 @@ class KEM:
         return KEMKeyPair(encapsulated_key, decapsulated_key)
 
     @staticmethod
-    def kem_unwrap(my_ephemeral_secret_key: SecKey, encapsulated_key: bytes) -> KEMKeyPair:
+    def kem_unwrap(my_ephemeral_secret_key: SecKey, encapsulated_key: Bytes) -> KEMKeyPair:
         # Decapsulate the key and package both the encapsulated and decapsulated keys into a KEMKeyPair object.
         decapsulated_key = my_ephemeral_secret_key.decrypt(
             ciphertext=encapsulated_key,

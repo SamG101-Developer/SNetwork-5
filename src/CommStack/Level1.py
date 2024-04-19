@@ -69,7 +69,6 @@ class Level1(LevelN):
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket.recvfrom(4096)
-            # data = KEM.kem_unwrap(self._this_static_secret_key, data).decapsulated
             request = json.loads(data)
             Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 
@@ -100,8 +99,6 @@ class Level1(LevelN):
     def _send(self, connection: Connection, data: Json) -> None:
         # Send the unencrypted data to the address.
         encoded_data = json.dumps(data).encode()
-        # that_static_public_key = PubKey.from_bytes(self._level0.get(f"{connection.identifier.hex()}.key"))
-        # encoded_data = KEM.kem_wrap(that_static_public_key, encoded_data).encapsulated
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
