@@ -33,7 +33,7 @@ class LevelD(LevelN):
 
     def _bootstrap(self) -> None:
         # Make sure keys exist.
-        if not os.path.exists("_crypt"):
+        if not os.path.exists("_crypt/secret_key.pem"):
             logging.info("Generating keys.")
             os.mkdir("_crypt")
             this_static_key_pair = Signer.generate_key_pair()
