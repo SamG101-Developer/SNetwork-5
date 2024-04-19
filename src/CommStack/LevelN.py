@@ -36,7 +36,7 @@ class LevelN(ABC):
         ...
 
     @abstractmethod
-    def _send(self, connection: Connection, data: Json) -> Bool:
+    def _send(self, connection: Connection, data: Json) -> None:
         ...
 
     @abstractmethod
