@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.hashes import HashAlgorithm
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PublicFormat, PrivateFormat
 from cryptography.hazmat.primitives.serialization import load_der_public_key, load_der_private_key
 
-from src.Utils.Types import Bytes
+from src.Utils.Types import Bytes, Str
 
 
 class PubKey:
@@ -17,7 +17,11 @@ class PubKey:
 
     @property
     def bytes(self) -> Bytes:
-        return self._public_key.public_bytes(encoding=Encoding.PEM, format=PublicFormat.SubjectPublicKeyInfo)
+        return self._public_key.public_bytes(encoding=Encoding.DER, format=PublicFormat.SubjectPublicKeyInfo)
+
+    @property
+    def str(self) -> Str:
+        return self._public_key.public_bytes(encoding=Encoding.PEM, format=PublicFormat.SubjectPublicKeyInfo).decode()
 
     @staticmethod
     def from_bytes(bytes_: Bytes) -> PubKey:
@@ -38,7 +42,11 @@ class SecKey:
 
     @property
     def bytes(self) -> Bytes:
-        return self._secret_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption())
+        return self._secret_key.private_bytes(encoding=Encoding.DER, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption())
+
+    @property
+    def str(self) -> Str:
+        return self._secret_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption()).decode()
 
     @staticmethod
     def from_bytes(bytes_: Bytes) -> SecKey:
