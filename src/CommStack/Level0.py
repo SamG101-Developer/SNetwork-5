@@ -1,18 +1,13 @@
-import json
-import logging
-import random
 from enum import Enum
 from hashlib import md5
 from ipaddress import IPv4Address
-from socket import socket as Socket, AF_INET, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
-import os, pickle, time
+import os, json, logging, pickle, random, time
 
 from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
 from src.Utils.Address import my_address
-from src.Utils.Atomic import AtomicInt
 from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float, Json
-from src.CONFIG import LEVEL_0_PORT
+from src.CONFIG import LEVEL_0_PORT, DIRECTORY_IP
 
 
 class DHash:
@@ -45,6 +40,7 @@ class Level0Protocol(LevelNProtocol, Enum):
     MigrateData = 11
     FileBackup = 12
     GetKeyFiles = 13
+    LeaveNetwork = 14
 
 
 class Level0(LevelN):
@@ -56,9 +52,8 @@ class Level0(LevelN):
     _this_node: IPv4Address
 
     _heartbeat_interval: Float
-    _prev_node_pings: AtomicInt
-    _next_node_pings: AtomicInt
-    _socket: Socket
+    _prev_node_pings: Int
+    _next_node_pings: Int
 
     _files: List[Str]
     _backup_files: List[Str]
@@ -81,8 +76,8 @@ class Level0(LevelN):
 
         # Network oriented attributes.
         self._heartbeat_interval = 0.5
-        self._prev_node_pings = AtomicInt(0)
-        self._next_node_pings = AtomicInt(0)
+        self._prev_node_pings = 0
+        self._next_node_pings = 0
 
         # File oriented attributes.
         self._files = []
@@ -140,6 +135,7 @@ class Level0(LevelN):
         # Update the previous and next nodes of the next and previous nodes.
         self._send_message(self._next_node, Level0Protocol.UpdatePrev, {"address": self._prev_node})
         self._send_message(self._prev_node, Level0Protocol.UpdateNext, {"address": self._next_node})
+        self._send_message(DIRECTORY_IP, Level0Protocol.LeaveNetwork, {"address": self._this_node})
         self._state = Level0State.Stop
 
     def kill(self) -> None:
@@ -234,7 +230,6 @@ class Level0(LevelN):
                 break
 
         # Clean up.
-        self._socket.shutdown(SHUT_RDWR)
         self._socket.close()
 
     def _ping_prev_node(self) -> None:
@@ -245,14 +240,14 @@ class Level0(LevelN):
                 time.sleep(self._heartbeat_interval)
 
             # If there is a previous node, and it is still responsive, keep pinging it.
-            while self._state == Level0State.Online and self._prev_node_pings.get() < 3:
+            while self._state == Level0State.Online and self._prev_node_pings < 3:
                 time.sleep(self._heartbeat_interval)
                 self._send_message(self._prev_node, Level0Protocol.Ping)
-                self._prev_node_pings.inc()
+                self._prev_node_pings += 1
 
             # The node has become unresponsive, so remove it from the network.
             self._prev_node = self._this_node
-            self._prev_node_pings.set(0)
+            self._prev_node_pings = 0
 
             # Handle files.
             self._backup_restore()
@@ -273,14 +268,14 @@ class Level0(LevelN):
                 time.sleep(self._heartbeat_interval)
 
             # If there is a next node, and it is still responsive, keep pinging it.
-            while self._next_node_pings.get() < 3:
+            while self._next_node_pings < 3:
                 time.sleep(self._heartbeat_interval)
                 self._send_message(self._next_node, Level0Protocol.Ping)
-                self._next_node_pings.inc()
+                self._next_node_pings += 1
 
             # The node has become unresponsive, so remove it from the network.
             self._next_node = self._this_node
-            self._next_node_pings.set(0)
+            self._next_node_pings = 0
 
     def _refresh_key_cache(self) -> None:
         self._get_random_key_file()
@@ -338,12 +333,12 @@ class Level0(LevelN):
     def _handle_ping_from_prev_node(self, address: IPv4Address) -> None:
         # Reset the ping count of the previous node.
         assert self._prev_node == address
-        self._prev_node_pings.set(0)
+        self._prev_node_pings = 0
 
     def _handle_ping_from_next_node(self, address: IPv4Address) -> None:
         # Reset the ping count of the next node.
         assert self._next_node == address
-        self._next_node_pings.set(0)
+        self._next_node_pings = 0
 
     def _lookup_key_in_domain_or_prev(self, address: IPv4Address, send_to: IPv4Address, key: Int) -> None:
         # Check if the key is in the domain of the current node.

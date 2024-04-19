@@ -1,5 +1,4 @@
 from ipaddress import IPv4Address
-from socket import socket as Socket, AF_INET, SOCK_DGRAM
 from threading import Thread
 import json, logging, random
 
@@ -10,7 +9,6 @@ from src.CONFIG import LEVEL_D_PORT
 
 
 class DirectoryService(LevelN):
-    _socket: Socket
     _cache: List[IPv4Address]
 
     def __init__(self) -> None:
@@ -34,6 +32,8 @@ class DirectoryService(LevelN):
         match request["command"]:
             case LevelDProtocol.JoinNetwork.value:
                 self._handle_join_network(address, request)
+            case 14:
+                self._cache.remove(address)
 
     def _send(self, address: IPv4Address, data: Json) -> None:
         encoded_data = json.dumps(data).encode()
