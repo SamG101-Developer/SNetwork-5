@@ -92,7 +92,7 @@ class MainWindow(QWidget):
         self._directory_service = DirectoryService()
 
     def exit_app(self) -> None:
-        if self._stack:
+        if self._stack and self._stack.level0:
             self._stack.level0.leave()
         super().close()
 
