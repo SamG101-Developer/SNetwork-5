@@ -1,26 +1,11 @@
 """
-The SecureSocket instance is used to establish secure connections between nodes on the network. It has an insecure
-socket and a secure socket, that are completely isolated from each other. The insecure socket (no e2e encryption) is
-used to set up the secure connection. Once the secure connection is established, the secure socket (with e2e encryption)
-is used to send and receive data.
+The Level1 layer of the stack is used to establish connections between nodes on the network. It operates over an
+insecure socket. Once the secure connection is established, the secure socket (with e2e encryption) is used to send and
+receive data. This is done in Layer2.
 
 Whilst the insecure socket has no e2e encryption, and doesn't need it as no confidential data is exchanged on this
-socket, but as a precaution, static public keys are used to encrypt data in transit. This is not vulnerable to MITM, as
+socket, as a precaution, static public keys are used to encrypt data in transit. This is not vulnerable to MITM, as
 important data is also signed inside the encrypted payload.
-
-The SecureSocket contains all the commands for the connection handshake, splitting the commands for data exchange and
-connection handshake into two layers. The data exchange can then be done with the Node class, which stores a
-SecureSocket instance ad the next layer of abstraction, and utilises the "send" method for secure data transfer.
-
-The secure socket uses ephemeral keys, signed by static keys, to KEM-wrap a master key. This master key is then used for
-authenticated symmetric encryption. This enables perfect forward secrecy, as the master key is only used for the
-duration of the connection, and the ephemeral keys are discarded after the connection is closed. No two master keys are
-wrapped by the same ephemeral public key. Multiple keys might be derived from the same master key.
-
-The insecure and secure sockets operate on separate ports. They have a slightly different protocol, as the secure socket
-needs the connection token to be prepended to the ciphertext, to know which key needs to be used to attempt decryption.
-The connection token is also embedded into the encrypted request, so even if the prepended connection token is tampered
-with, the subsequent comparison will fail, and the connection will be closed.
 """
 
 from __future__ import annotations

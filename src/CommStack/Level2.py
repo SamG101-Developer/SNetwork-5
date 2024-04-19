@@ -1,7 +1,17 @@
 """
-The Node class sends commands to other nodes, over an encrypted connection. The connection is setup by the SecureSocket
-class, isolating the layers of the communication stack. The Node class is responsible for sending and receiving messages
-from other nodes, and is the primary interface for the application to communicate with other nodes.
+The Node class sends commands to other nodes, over an encrypted connection. The connection is setup by the class,
+isolating the layers of the communication stack. The Node class is responsible for sending and receiving messages from
+other nodes, and is the primary interface for the application to communicate with other nodes.
+
+The secure socket uses ephemeral keys, signed by static keys, to KEM-wrap a master key. This master key is then used for
+authenticated symmetric encryption. This enables perfect forward secrecy, as the master key is only used for the
+duration of the connection, and the ephemeral keys are discarded after the connection is closed. No two master keys are
+wrapped by the same ephemeral public key. Multiple keys might be derived from the same master key.
+
+The encrypted connection has a slightly different protocol, as the secure socket needs the connection token to be
+prepended to the ciphertext, to know which key needs to be used to attempt decryption. The connection token is also
+embedded into the encrypted request, so even if the prepended connection token is tampered with, the later comparison
+will fail, and the connection will be closed.
 """
 
 from dataclasses import dataclass, field
@@ -58,6 +68,7 @@ class TunnelKeyGroup:
 
 class Level2(LevelN):
     _level1: Level1
+
     _route: Optional[Route]
     _route_forward_token_map: Dict[Bytes, Bytes]
     _route_backward_token_map: Dict[Bytes, Bytes]
