@@ -41,9 +41,9 @@ class LevelD(LevelN):
             logging.debug("Generating keys.")
             this_static_key_pair = Signer.generate_key_pair()
             identifier = Hasher.hash(this_static_key_pair.public_key.bytes, SHA3_256())
+            open("_crypt/identifier.txt", "w").write(identifier.hex())
             open("_crypt/public_key.pem", "w").write(this_static_key_pair.public_key.str)
             open("_crypt/secret_key.pem", "w").write(this_static_key_pair.secret_key.str)
-            open("_crypt/identifier.txt", "w").write(identifier.hex())
         logging.debug("Created keys, joining network.")
 
         # Join the network by sending a request to the directory node.
