@@ -16,16 +16,18 @@ will fail, and the connection will be closed.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from ipaddress import IPv6Address
+from ipaddress import IPv4Address
 from threading import Thread
 import json, os
 
-from Crypt.AsymmetricKeys import PubKey, SecKey
 from src.CommStack.Level1 import Level1, Level1Protocol
 from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
+from src.Crypt.AsymmetricKeys import PubKey, SecKey
+from src.Crypt.KeyManager import KeyManager
 from src.Crypt.KEM import KEM
 from src.Crypt.Sign import Signer
 from src.Crypt.Symmetric import SymmetricEncryption
+from src.Utils.Address import my_address
 from src.Utils.Types import Bytes, Dict, Int, Json, List, Optional
 from src.CONFIG import LEVEL_2_PORT
 
@@ -48,7 +50,7 @@ class Level2State(Enum):
 
 @dataclass
 class RouteNode:
-    address: IPv6Address
+    address: IPv4Address
     identifier: Bytes
     public_key: Optional[Bytes]
     e2e_master_key: Optional[Bytes]
@@ -85,7 +87,7 @@ class Level2(LevelN):
 
     def _listen(self) -> None:
         # Bind the secure socket to port 40001.
-        self._socket.bind(("::", self._port))
+        self._socket.bind(("", self._port))
 
         # Listen for incoming encrypted requests, and handle them in a new thread.
         while True:
@@ -106,9 +108,9 @@ class Level2(LevelN):
                 continue
 
             # Handle the command in a new thread.
-            Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
+            Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 
-    def _handle_command(self, address: IPv6Address, request: Json) -> None:
+    def _handle_command(self, address: IPv4Address, request: Json) -> None:
         # Check that the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
             return
@@ -142,7 +144,7 @@ class Level2(LevelN):
 
     def create_route(self) -> None:
         # Create a new route, with this node as the client node.
-        this_address = IPv6Address("::")
+        this_address = my_address()
         this_identifier = KeyManager.get_identifier()
         this_node = RouteNode(address=this_address, identifier=this_identifier, public_key=None, e2e_master_key=None)
         self._route = Route(token=os.urandom(32), nodes=[this_node])
@@ -171,9 +173,9 @@ class Level2(LevelN):
                     self._route.nodes.pop()
                     break
 
-    def _handle_extend_route(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_extend_route(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         # Attempt a connection to the next node in the route.
-        next_node_address = IPv6Address(request["next_node_addr"])
+        next_node_address = IPv4Address(request["next_node_addr"])
         next_node_identifier = bytes.fromhex(request["next_node_id"])
         connection = self._level1.connect(next_node_address, next_node_identifier)
 
@@ -199,11 +201,11 @@ class Level2(LevelN):
             route_token = bytes.fromhex(request["route_token"])
             self._tunnel_message_backward(token, route_token, response)
 
-    def _handle_extend_route_reject(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_extend_route_reject(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         # Mark the pending node as rejected
         self._route.nodes[-1].state = Level2State.Rejected
 
-    def _handle_get_ephemeral_pub_key_for_kem(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_get_ephemeral_pub_key_for_kem(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         # Create an ephemeral key pair, and sign the public key with the static private key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
         signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes, self._level1._conversations[token].identifier)
@@ -219,7 +221,7 @@ class Level2(LevelN):
 
         self._send(self._level1._conversations[token], response)
 
-    def _handle_extend_route_accept(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_extend_route_accept(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         # Determine the identifier and static key of the new node.
         that_identifier = self._route.nodes[-1].identifier
         that_static_public_key = PubKey.from_bytes(self._level1._level0.get(f"Certificate-{that_identifier}"))
@@ -242,7 +244,7 @@ class Level2(LevelN):
             "token": token.hex(),
             "kem_wrapped_master_key": kem_wrapped_master_key.hex()}
 
-    def _handle_kem_wrapped_master_key(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_kem_wrapped_master_key(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         # Get the ephemeral public key for this route, and unwrap the master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_wrapped_master_key"])
         this_ephemeral_secret_key = self._tunnel_keys[bytes.fromhex(request["route_token"])].ephemeral_secret_key
@@ -261,7 +263,7 @@ class Level2(LevelN):
         route_token = bytes.fromhex(request["route_token"])
         self._tunnel_message_backward(token, route_token, response)
 
-    def _handle_forward(self, address: IPv6Address, token: Bytes, request: Json) -> None:
+    def _handle_forward(self, address: IPv4Address, token: Bytes, request: Json) -> None:
         route_token = bytes.fromhex(request["route_token"])
 
         # From the previous node in the route.

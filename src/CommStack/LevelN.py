@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from ipaddress import IPv6Address
+from ipaddress import IPv4Address
 from socket import socket as Socket
 
 from src.Utils.Types import Bool, Bytes, Json, Int, Optional
@@ -10,7 +10,7 @@ from src.Crypt.AsymmetricKeys import SecKey
 
 @dataclass
 class Connection:
-    address: IPv6Address
+    address: IPv4Address
     identifier: Bytes
     token: Bytes
     state: LevelNProtocol
@@ -32,7 +32,7 @@ class LevelN(ABC):
         ...
 
     @abstractmethod
-    def _handle_command(self, address: IPv6Address, request: Json) -> None:
+    def _handle_command(self, address: IPv4Address, request: Json) -> None:
         ...
 
     @abstractmethod
@@ -43,3 +43,6 @@ class LevelN(ABC):
     @abstractmethod
     def _port(self) -> Int:
         ...
+
+    def __del__(self):
+        self._socket.close()

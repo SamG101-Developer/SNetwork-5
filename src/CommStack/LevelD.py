@@ -1,14 +1,17 @@
 from enum import Enum
-from ipaddress import IPv6Address
+from ipaddress import IPv4Address
 from threading import Thread
 import json, os
 
 from PyQt6.QtWidgets import QErrorMessage
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
+from src.Crypt.AsymmetricKeys import PubKey
 from src.CommStack.Level0 import Level0
 from src.CommStack.LevelN import LevelN, LevelNProtocol
 from src.Crypt.Hash import Hasher, SHA3_256
 from src.Crypt.Sign import Signer
+from src.Utils.Address import my_address
 from src.Utils.Types import Json, Int
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP
 
@@ -33,12 +36,12 @@ class LevelD(LevelN):
         if not os.path.exists("_crypt"):
             os.mkdir("_crypt")
             this_static_key_pair = Signer.generate_key_pair()
+            identifier = Hasher.hash(this_static_key_pair.public_key.bytes, SHA3_256())
             open("_crypt/public_key.pem", "w").write(this_static_key_pair.public_key.str)
             open("_crypt/secret_key.pem", "w").write(this_static_key_pair.secret_key.str)
+            open("_crypt/identifier.txt", "w").write(identifier.hex())
 
         # Join the network by sending a request to the directory node.
-        this_static_public_key = open("_crypt/public_key.pem").read()
-        this_identifier = Hasher.hash(this_static_public_key.encode(), SHA3_256())
         request = {
             "command": LevelDProtocol.JoinNetwork.value}
 
@@ -46,13 +49,13 @@ class LevelD(LevelN):
         self._send(DIRECTORY_IP, request)
 
     def _listen(self) -> None:
-        self._socket.bind(("::", self._port))
+        self._socket.bind(("", self._port))
         while True:
             data, address = self._socket.recvfrom(1024)
             request = json.loads(data)
-            Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
+            Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 
-    def _handle_command(self, address: IPv6Address, request: Json) -> None:
+    def _handle_command(self, address: IPv4Address, request: Json) -> None:
         if "command" not in request:
             return
 
@@ -61,7 +64,7 @@ class LevelD(LevelN):
             case LevelDProtocol.Bootstrap.value:
                 self._handle_bootstrap(request)
 
-    def _send(self, address: IPv6Address, data: Json) -> None:
+    def _send(self, address: IPv4Address, data: Json) -> None:
         encoded_data = json.dumps(data).encode()
         self._socket.sendto(encoded_data, (address.exploded, self._port))
 
@@ -83,10 +86,14 @@ class LevelD(LevelN):
 
         # Add the node to the DHT.
         for ip in node_ip_addresses:
-            ip = IPv6Address(bytes.fromhex(ip))
+            ip = IPv4Address(bytes.fromhex(ip))
             if self._level0.join(ip): break
 
         # Place node info on the DHT.
-        key_file = f"_crypt/{this_identifier.hex()}.pem"
-        open(key_file, "w").write(open("_crypt/public_key.pem").read())
+        info = {
+            "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes.hex(),
+            "ip_address": my_address()
+        }
+        key_file = f"_crypt/{this_identifier.hex()}.csv"
+        json.dump(info, open(key_file, "w"))
         self._level0.put(key_file)

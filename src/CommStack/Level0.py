@@ -1,14 +1,17 @@
+import random
 from enum import Enum
 from hashlib import md5
-from ipaddress import IPv6Address
+from ipaddress import IPv4Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
 import os, pickle, time
 
 from src.CommStack.LevelN import LevelN, LevelNProtocol
+from src.Utils.Address import my_address
 from src.Utils.Atomic import AtomicInt
 from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float
 from src.CONFIG import LEVEL_0_PORT
+
 
 class DHash:
     @staticmethod
@@ -16,7 +19,7 @@ class DHash:
         return int(md5(value).hexdigest(), 16) % 2 ** 16
 
     @staticmethod
-    def hash_address(address: IPv6Address) -> Int:
+    def hash_address(address: IPv4Address) -> Int:
         return DHash.hash(address.packed)
 
 
@@ -39,15 +42,17 @@ class Level0Protocol(LevelNProtocol, Enum):
     BackupClear = 10
     MigrateData = 11
     FileBackup = 12
+    GetKeyFiles = 13
+    KeyFiles = 14
 
 
 class Level0(LevelN):
     _state: Level0State
     _key: Int
 
-    _prev_node: IPv6Address
-    _next_node: IPv6Address
-    _this_node: IPv6Address
+    _prev_node: IPv4Address
+    _next_node: IPv4Address
+    _this_node: IPv4Address
 
     _heartbeat_interval: Float
     _prev_node_pings: AtomicInt
@@ -56,12 +61,13 @@ class Level0(LevelN):
 
     _files: List[Str]
     _backup_files: List[Str]
-    _key_owners: Dict[Int, IPv6Address]
+    _node_info_files: List[Dict]
+    _key_owners: Dict[Int, IPv4Address]
     _directory: Str
 
     def __init__(self):
         # General attributes.
-        this_node = IPv6Address("::1")
+        this_node = my_address()
         self._state = Level0State.Stop
         self._key = DHash.hash_address(this_node)
 
@@ -79,6 +85,7 @@ class Level0(LevelN):
         # File oriented attributes.
         self._files = []
         self._backup_files = []
+        self._node_info_files = []
         self._key_owners = {}
         self._directory = "_store"
 
@@ -90,7 +97,7 @@ class Level0(LevelN):
         Thread(target=self._ping_prev_node).start()
         Thread(target=self._ping_next_node).start()
 
-    def join(self, joining_address: IPv6Address) -> Bool:
+    def join(self, joining_address: IPv4Address) -> Bool:
         timeout = time.time()
 
         # Send a lookup message to the joining node.
@@ -147,6 +154,15 @@ class Level0(LevelN):
 
         return open(os.path.join(self._directory, file_name), "rb").read()
 
+    def get_random_key_file(self) -> Str:
+        node_info_files = []
+        node = self._next_node
+        for i in range(3):
+            self._send_message(node, Level0Protocol.GetKeyFiles)
+            node = IPv4Address(self._node_info_files[i]["ip"])
+
+
+
     def put(self, file_name: Str) -> None:
         file_name_stripped = os.path.split(file_name)[1]
         file_name_stripped = os.path.splitext(file_name)[0]
@@ -182,7 +198,7 @@ class Level0(LevelN):
 
     def _listen(self) -> None:
         # Bind the socket to the node's address.
-        self._socket.bind((self._this_node.exploded, self._port))
+        self._socket.bind(("", self._port))
         self._state = Level0State.Online
 
         # Keep listening whilst the node is online.
@@ -190,7 +206,7 @@ class Level0(LevelN):
             try:
                 data, address = self._socket.recvfrom(1024)
                 data = pickle.loads(data)
-                Thread(target=self._handle_command, args=(IPv6Address(address[0]), data)).start()
+                Thread(target=self._handle_command, args=(IPv4Address(address[0]), data)).start()
             except ConnectionResetError:
                 break
 
@@ -255,7 +271,7 @@ class Level0(LevelN):
     def _port(self) -> Int:
         return LEVEL_0_PORT
 
-    def _handle_command(self, address: IPv6Address, data: Dict) -> None:
+    def _handle_command(self, address: IPv4Address, data: Dict) -> None:
         match Level0Protocol(data.get("cmd")):
             case Level0Protocol.Ping if address == self._prev_node:
                 self._handle_ping_from_prev_node(address)
@@ -287,17 +303,17 @@ class Level0(LevelN):
             case Level0Protocol.MigrateData:
                 self._handle_migration(address)
 
-    def _handle_ping_from_prev_node(self, address: IPv6Address) -> None:
+    def _handle_ping_from_prev_node(self, address: IPv4Address) -> None:
         # Reset the ping count of the previous node.
         assert self._prev_node == address
         self._prev_node_pings.set(0)
 
-    def _handle_ping_from_next_node(self, address: IPv6Address) -> None:
+    def _handle_ping_from_next_node(self, address: IPv4Address) -> None:
         # Reset the ping count of the next node.
         assert self._next_node == address
         self._next_node_pings.set(0)
 
-    def _lookup_key_in_domain_or_prev(self, address: IPv6Address, send_to: IPv6Address, key: Int) -> None:
+    def _lookup_key_in_domain_or_prev(self, address: IPv4Address, send_to: IPv4Address, key: Int) -> None:
         # Check if the key is in the domain of the current node.
         if self._file_in_domain(key):
             self._send_message(send_to, Level0Protocol.LookupFound, {"key": key})
@@ -306,7 +322,7 @@ class Level0(LevelN):
         # Otherwise, check if the key is in the domain of the previous node.
         self._send_message(self._prev_node, Level0Protocol.LookupThenPrev, {"send_to": send_to, "key": key})
 
-    def _lookup_key_in_domain_or_next(self, address: IPv6Address, send_to: IPv6Address, key: Int) -> None:
+    def _lookup_key_in_domain_or_next(self, address: IPv4Address, send_to: IPv4Address, key: Int) -> None:
         # Check if the key is in the domain of the current node.
         if self._node_in_domain(key):
             self._send_message(send_to, Level0Protocol.LookupFound, {"key": key})
@@ -315,35 +331,35 @@ class Level0(LevelN):
         # Otherwise, check if the key is in the domain of the next node.
         self._send_message(self._next_node, Level0Protocol.LookupThenNext, {"send_to": send_to, "key": key})
 
-    def _handle_lookup_found(self, address: IPv6Address, key: Int) -> None:
+    def _handle_lookup_found(self, address: IPv4Address, key: Int) -> None:
         # If the key is found, add it to the list of key owners.
         self._key_owners[key] = address
 
-    def _handle_get_neighbours(self, address: IPv6Address) -> None:
+    def _handle_get_neighbours(self, address: IPv4Address) -> None:
         # Send the neighbours of the current node to the requesting node.
         self._send_message(address, Level0Protocol.Neighbours, {"prev": self._this_node, "next": self._next_node})
 
-    def _handle_get_neighbours_response(self, address: IPv6Address, prev: IPv6Address, next: IPv6Address) -> None:
+    def _handle_get_neighbours_response(self, address: IPv4Address, prev: IPv4Address, next: IPv4Address) -> None:
         # Set the previous and next nodes of the current node.
         self._prev_node = prev
         self._next_node = next
 
-    def _handle_file_request(self, address: IPv6Address, file_name: Str) -> None:
+    def _handle_file_request(self, address: IPv4Address, file_name: Str) -> None:
         # Send the file to the requesting node.
         file_bytes = open(os.path.join(self._directory, file_name), "rb").read()
         self._send_message(address, Level0Protocol.File, {"file_name": file_name, "file_bytes": file_bytes})
 
-    def _handle_file(self, address: IPv6Address, file_name: Str, file_bytes: Bytes) -> None:
+    def _handle_file(self, address: IPv4Address, file_name: Str, file_bytes: Bytes) -> None:
         # Save the file to the current node.
         self._reg_file(file_name)
         open(os.path.join(self._directory, file_name), "wb").write(file_bytes)
 
-    def _handle_backup_file(self, address: IPv6Address, file_name: Str, file_bytes: Bytes) -> None:
+    def _handle_backup_file(self, address: IPv4Address, file_name: Str, file_bytes: Bytes) -> None:
         # Save the file to the current node.
         open(os.path.join(self._directory, file_name), "wb").write(file_bytes)
         self._backup_files.append(file_name)
 
-    def _handle_migration(self, address: IPv6Address) -> None:
+    def _handle_migration(self, address: IPv4Address) -> None:
         self._prev_node = address
         files_to_send = [file_name for file_name in self._files if not self._file_in_domain(DHash.hash(file_name.encode()))]
         for file_name in files_to_send:
@@ -359,21 +375,21 @@ class Level0(LevelN):
     def _backup_clear(self) -> None:
         self._backup_files.clear()
 
-    def _send_message(self, address: IPv6Address, protocol: Level0Protocol, data: Optional[Dict] = None) -> None:
+    def _send_message(self, address: IPv4Address, protocol: Level0Protocol, data: Optional[Dict] = None) -> None:
         data = pickle.dumps({"cmd": protocol.value, **(data or {})})
         if self._state == Level0State.Online:
             self._socket.sendto(data, (address.exploded, self._port))
 
-    def _send_file(self, address: IPv6Address, file_name: Str) -> None:
+    def _send_file(self, address: IPv4Address, file_name: Str) -> None:
         data = open(file_name, "rb").read()
         self._send_message(address, Level0Protocol.File, {"file_name": file_name, "file_bytes": data})
 
-    def _send_file_backups(self, address: IPv6Address) -> None:
+    def _send_file_backups(self, address: IPv4Address) -> None:
         self._send_message(address, Level0Protocol.BackupClear)
         for file_name in self._backup_files:
             self._send_file_backup(address, file_name)
 
-    def _send_file_backup(self, address: Optional[IPv6Address], file_name: Str) -> None:
+    def _send_file_backup(self, address: Optional[IPv4Address], file_name: Str) -> None:
         if address == self._this_node: return
         data = open(file_name, "rb").read()
         self._send_message(address, Level0Protocol.FileBackup, {"file_name": file_name, "file_bytes": data})

@@ -9,7 +9,9 @@ important data is also signed inside the encrypted payload.
 """
 
 from __future__ import annotations
-from ipaddress import IPv6Address
+
+import logging
+from ipaddress import IPv4Address
 from enum import Enum
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread
@@ -17,6 +19,7 @@ import json, os, struct, time
 
 from src.Crypt.AsymmetricKeys import SecKey, PubKey
 from src.Crypt.KEM import KEM
+from src.Crypt.KeyManager import KeyManager
 from src.Crypt.Sign import Signer
 from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
 from src.CommStack.Level0 import Level0
@@ -52,7 +55,7 @@ class Level1(LevelN):
         self._conversations = {}
 
         # Get the node identifier and static secret key.
-        self._this_identifier = KeyManager.get_id()
+        self._this_identifier = KeyManager.get_identifier()
         self._this_static_secret_key = KeyManager.get_static_secret_key()
 
         # Start listening on both sockets.
@@ -60,16 +63,16 @@ class Level1(LevelN):
 
     def _listen(self) -> None:
         # Bind the insecure socket to port 40000.
-        self._socket.bind(("::", self._port))
+        self._socket.bind(("", self._port))
 
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket.recvfrom(1024)
             data = KEM.kem_unwrap(self._this_static_secret_key, data).decapsulated
             request = json.loads(data)
-            Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
+            Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 
-    def _handle_command(self, address: IPv6Address, request: Json) -> None:
+    def _handle_command(self, address: IPv4Address, request: Json) -> None:
         # Check that the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
             return
@@ -103,7 +106,9 @@ class Level1(LevelN):
     def _port(self) -> Int:
         return LEVEL_1_PORT
 
-    def connect(self, address: IPv6Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
+    def connect(self, address: IPv4Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
+        logging.debug(f"Connecting to {address}")
+
         token = token or os.urandom(32)
 
         # Prepare static and ephemeral keys.
@@ -128,7 +133,9 @@ class Level1(LevelN):
             pass
         return connection if connection.state == Level1Protocol.AcceptConnection else None
 
-    def _handle_connection_request(self, address: IPv6Address, request: Json) -> None:
+    def _handle_connection_request(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received connection request from {address}")
+
         # Get the identifier and key information, and get the certificate from the DHT.
         that_identifier = bytes.fromhex(request["identifier"])
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_public_key"])
@@ -161,7 +168,9 @@ class Level1(LevelN):
         self._conversations[connection.token].challenge = challenge
         self._send(connection, response)
 
-    def _handle_signature_challenge(self, address: IPv6Address, request: Json) -> None:
+    def _handle_signature_challenge(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received signature challenge from {address}")
+
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
@@ -202,7 +211,9 @@ class Level1(LevelN):
         self._challenges.append(challenge)
         self._send(connection, response)
 
-    def _handle_challenge_response(self, address: IPv6Address, request: Json) -> None:
+    def _handle_challenge_response(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received challenge response from {address}")
+
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
@@ -237,7 +248,9 @@ class Level1(LevelN):
         connection.e2e_master_key = master_key
         self._send(connection, response)
 
-    def _handle_accept_connection(self, address: IPv6Address, request: Json) -> None:
+    def _handle_accept_connection(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received connection acceptance from {address}")
+
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
@@ -263,13 +276,17 @@ class Level1(LevelN):
         connection.e2e_master_key = master_key
         connection.state = Level1Protocol.AcceptConnection
 
-    def _handle_reject_connection(self, address: IPv6Address, request: Json) -> None:
+    def _handle_reject_connection(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received connection rejection from {address}")
+
         # Close and delete the connection.
         connection = self._conversations[bytes.fromhex(request["token"])]
         connection.state = Level1Protocol.CloseConnection
         del self._conversations[connection.token]
 
-    def _handle_close_connection(self, address: IPv6Address, request: Json) -> None:
+    def _handle_close_connection(self, address: IPv4Address, request: Json) -> None:
+        logging.debug(f"Received connection close from {address}")
+
         # Close and delete the connection.
         connection = self._conversations[bytes.fromhex(request["token"])]
         connection.state = Level1Protocol.CloseConnection
