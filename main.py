@@ -1,11 +1,10 @@
-from PyQt6.QtWidgets import QApplication, QErrorMessage
+from PyQt6.QtWidgets import QApplication
 import logging, os, sys
 
 from src.Gui.MainWindow import MainWindow
 
 
 def custom_excepthook(type, value, traceback) -> None:
-    QErrorMessage.qtHandler().showMessage(f"{type.__name__}: {value}")
     logging.exception(f"{type.__name__}: {value}")
     sys.__excepthook__(type, value, traceback)
 
