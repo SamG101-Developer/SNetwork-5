@@ -70,6 +70,7 @@ class Level1(LevelN):
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket.recvfrom(1024)
+            logging.debug(f"Received data from {address}: {data}")
             # data = KEM.kem_unwrap(self._this_static_secret_key, data).decapsulated
             request = json.loads(data)
             Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
