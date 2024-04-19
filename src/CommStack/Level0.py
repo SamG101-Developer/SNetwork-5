@@ -7,6 +7,9 @@ from socket import socket as Socket, AF_INET6, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
 import os, pickle, time
 
+from CommStack.LevelN import Connection
+from Utils.Types import Json
+
 from src.CommStack.LevelN import LevelN, LevelNProtocol
 from src.Utils.Address import my_address
 from src.Utils.Atomic import AtomicInt
@@ -414,3 +417,7 @@ class Level0(LevelN):
         if address == self._this_node: return
         data = open(file_name, "rb").read()
         self._send_message(address, Level0Protocol.FileBackup, {"file_name": file_name, "file_bytes": data})
+
+    def _send(self, connection: Connection, data: Json) -> None:
+        # Dummy
+        ...
