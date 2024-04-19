@@ -1,3 +1,4 @@
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QWidget, QGridLayout, QFileDialog, QInputDialog
 
 from src.Gui.AppItem import AppItem
@@ -13,6 +14,10 @@ class MainWindow(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+
+        # Initialize the stack and directory service
+        self._stack = None
+        self._directory_service = None
 
         # Create the grid layout.
         layout = QGridLayout(self)
@@ -34,8 +39,8 @@ class MainWindow(QWidget):
             parent=self, text="Host hidden service", icon="./icons/hidden_service.svg", disabled=True)
         self._directory_button = AppItem(
             parent=self, text="Directory Node", icon="./icons/directory_node.svg", clicked=self.directory, large=True)
-        self._dummy_button_r = AppItem(
-            parent=self, text="", disabled=True)
+        self._exit_application_button = AppItem(
+            parent=self, text="Exit Application", icon="./icons/exit_app.svg", clicked=self.exit_app, disabled=False)
 
         # Add the buttons to the layout
         layout.addWidget(self._join_button, 1, 0)
@@ -44,7 +49,7 @@ class MainWindow(QWidget):
         layout.addWidget(self._retrieve_button, 1, 3)
         layout.addWidget(self._host_hidden_service_button, 2, 0)
         layout.addWidget(self._directory_button, 2, 1, 1, 2)
-        layout.addWidget(self._dummy_button_r, 2, 3)
+        layout.addWidget(self._exit_application_button, 2, 3)
 
         # Set the layout of the main window
         self.setLayout(layout)
@@ -85,3 +90,12 @@ class MainWindow(QWidget):
         self._join_button.setDisabled(True)
 
         self._directory_service = DirectoryService()
+
+    def exit_app(self) -> None:
+        if self._stack:
+            self._stack.level0.leave()
+        super().close()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.exit_app()
+        super().closeEvent(event)

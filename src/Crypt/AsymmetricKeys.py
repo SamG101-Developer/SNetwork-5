@@ -50,7 +50,7 @@ class SecKey:
 
     @staticmethod
     def from_bytes(bytes_: Bytes) -> SecKey:
-        return SecKey(load_der_private_key(bytes_, b""))
+        return SecKey(load_der_private_key(bytes_, None))
 
     def pub_key(self) -> PubKey:
         return PubKey(self._secret_key.public_key())
