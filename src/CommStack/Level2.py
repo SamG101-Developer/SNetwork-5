@@ -239,6 +239,7 @@ class Level2(LevelN):
             "signature": signature.hex()
         }
 
+        logging.debug(f"Sending ephemeral public key to {self._level1._conversations[token].address}.")
         self._send(self._level1._conversations[token], response)
 
     def _handle_extend_route_accept(self, address: IPv4Address, token: Bytes, request: Json) -> None:
@@ -246,7 +247,7 @@ class Level2(LevelN):
 
         # Determine the identifier and static key of the new node.
         that_identifier = self._route.nodes[-1].identifier
-        that_static_public_key = PubKey.from_bytes(self._level1._level0.get(f"{that_identifier.hex()}.key"))
+        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level1._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the signature, and add the ephemeral public key to the route.
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_pub_key"])
