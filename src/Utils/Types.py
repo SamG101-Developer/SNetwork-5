@@ -12,4 +12,4 @@ type Set[T] = set[T]
 type Str = str
 type Tuple[*Ts] = tuple[Ts]
 type Type[T] = type[T]
-type Json = Dict[Str, Str]
+type Json = Dict[Str, Str | Int | Bool | List[Json] | Json]
