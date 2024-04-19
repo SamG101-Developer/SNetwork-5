@@ -236,14 +236,18 @@ class Level0(LevelN):
         # Keep pinging whilst the node is online.
         while self._state == Level0State.Online:
             # Wait for the previous node to be set.
+            logging.debug("Waiting for new previous node")
             while self._prev_node == self._this_node:
                 time.sleep(self._heartbeat_interval)
+            logging.debug(f"Previous node set to {self._prev_node}. Pinging")
 
             # If there is a previous node, and it is still responsive, keep pinging it.
             while self._state == Level0State.Online and self._prev_node_pings < 3:
                 time.sleep(self._heartbeat_interval)
                 self._send_message(self._prev_node, Level0Protocol.Ping)
                 self._prev_node_pings += 1
+
+            logging.debug("Previous node offline")
 
             # The node has become unresponsive, so remove it from the network.
             self._prev_node = self._this_node
@@ -264,14 +268,18 @@ class Level0(LevelN):
         # Keep pinging whilst the node is online.
         while self._state == Level0State.Online:
             # Wait for the next node to be set.
+            logging.debug("Waiting for new next node")
             while self._next_node == self._this_node:
                 time.sleep(self._heartbeat_interval)
+            logging.debug(f"Next node set to {self._prev_node}. Pinging")
 
             # If there is a next node, and it is still responsive, keep pinging it.
             while self._next_node_pings < 3:
                 time.sleep(self._heartbeat_interval)
                 self._send_message(self._next_node, Level0Protocol.Ping)
                 self._next_node_pings += 1
+
+            logging.debug("Previous node offline")
 
             # The node has become unresponsive, so remove it from the network.
             self._next_node = self._this_node
