@@ -13,7 +13,7 @@ prepended to the ciphertext, to know which key needs to be used to attempt decry
 embedded into the encrypted request, so even if the prepended connection token is tampered with, the later comparison
 will fail, and the connection will be closed.
 """
-
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv4Address
@@ -143,6 +143,8 @@ class Level2(LevelN):
         return LEVEL_2_PORT
 
     def create_route(self) -> None:
+        logging.debug("Creating a new route.")
+
         # Create a new route, with this node as the client node.
         this_address = my_address()
         this_identifier = KeyManager.get_identifier()
@@ -174,6 +176,8 @@ class Level2(LevelN):
                     break
 
     def _handle_extend_route(self, address: IPv4Address, token: Bytes, request: Json) -> None:
+        logging.log(f"Extending route to {request['next_node_addr']}.")
+
         # Attempt a connection to the next node in the route.
         next_node_address = IPv4Address(request["next_node_addr"])
         next_node_identifier = bytes.fromhex(request["next_node_id"])
@@ -206,6 +210,8 @@ class Level2(LevelN):
         self._route.nodes[-1].state = Level2State.Rejected
 
     def _handle_get_ephemeral_pub_key_for_kem(self, address: IPv4Address, token: Bytes, request: Json) -> None:
+        logging.debug("Received request for ephemeral public key.")
+
         # Create an ephemeral key pair, and sign the public key with the static private key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
         signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes, self._level1._conversations[token].identifier)
@@ -222,6 +228,8 @@ class Level2(LevelN):
         self._send(self._level1._conversations[token], response)
 
     def _handle_extend_route_accept(self, address: IPv4Address, token: Bytes, request: Json) -> None:
+        logging.debug("Received acceptance of route extension.")
+
         # Determine the identifier and static key of the new node.
         that_identifier = self._route.nodes[-1].identifier
         that_static_public_key = PubKey.from_bytes(self._level1._level0.get(f"Certificate-{that_identifier}"))
@@ -245,6 +253,8 @@ class Level2(LevelN):
             "kem_wrapped_master_key": kem_wrapped_master_key.hex()}
 
     def _handle_kem_wrapped_master_key(self, address: IPv4Address, token: Bytes, request: Json) -> None:
+        logging.debug("Received KEM-wrapped master key.")
+
         # Get the ephemeral public key for this route, and unwrap the master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_wrapped_master_key"])
         this_ephemeral_secret_key = self._tunnel_keys[bytes.fromhex(request["route_token"])].ephemeral_secret_key
@@ -268,6 +278,8 @@ class Level2(LevelN):
 
         # From the previous node in the route.
         if token in self._route_forward_token_map.keys():
+            logging.debug(f"Forwarding message forwards from {address} to {self._level1._conversations[self._route_forward_token_map[token]].address}.")
+
             next_layer = bytes.fromhex(request["message"])
             next_layer = json.loads(SymmetricEncryption.decrypt(self._tunnel_keys[route_token].e2e_master_key, next_layer))
 
@@ -277,6 +289,8 @@ class Level2(LevelN):
 
         # From the next node in the route.
         elif token in self._route_backward_token_map:
+            logging.debug(f"Forwarding message backwards from {address} to {self._level1._conversations[self._route_backward_token_map[token]].address}.")
+
             tunnel_key = self._tunnel_keys[route_token].e2e_master_key
             next_layer = {
                 "command": Level2Protocol.Forward,
@@ -289,6 +303,8 @@ class Level2(LevelN):
             self._send(self._level1._conversations[prev_token], next_layer)
 
     def _tunnel_message_backward(self, token: Bytes, route_token: Bytes, message: Json) -> None:
+        logging.debug(f"Tunnelling message backwards to client.")
+
         # To tunnel a message backward, add a layer of encryption and send the message backwards.
         # Reverse tunnelling starts at any route node and ends at the client node.
         tunnel_key = self._tunnel_keys[route_token].e2e_master_key
@@ -303,6 +319,8 @@ class Level2(LevelN):
         self._send(connection, message)
 
     def _tunnel_message_forward(self, route_token: Bytes, target_node_id: Bytes, message: Json) -> None:
+        logging.debug(f"Tunnelling message forwards to {target_node_id}.")
+
         # To tunnel a message forward, apply the levels of encryption upto and including the index of the target node.
         # Forward tunnelling starts at the client node and ends at any route node.
 
