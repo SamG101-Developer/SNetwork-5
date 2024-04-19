@@ -56,7 +56,7 @@ class LevelD(LevelN):
     def _listen(self) -> None:
         self._socket.bind(("", self._port))
         while True:
-            data, address = self._socket.recvfrom(1024)
+            data, address = self._socket.recvfrom(4096)
             request = json.loads(data)
             Thread(target=self._handle_command, args=(IPv4Address(address[0]), request)).start()
 

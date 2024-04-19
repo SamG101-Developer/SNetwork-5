@@ -219,7 +219,7 @@ class Level0(LevelN):
         # Keep listening whilst the node is online.
         while self._state == Level0State.Online and self._state == Level0State.Online:
             try:
-                data, address = self._socket.recvfrom(1024)
+                data, address = self._socket.recvfrom(4096)
                 data = pickle.loads(data)
                 Thread(target=self._handle_command, args=(IPv4Address(address[0]), data)).start()
             except ConnectionResetError:
