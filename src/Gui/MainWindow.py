@@ -72,7 +72,7 @@ class MainWindow(QWidget):
         self._host_hidden_service_button.setDisabled(False)
         self._retrieve_button.setDisabled(False)
 
-        self._stack.handle_user_command("route")
+        self._stack.handle_create_route()
 
     def store(self) -> None:
         open_file_dialog = QFileDialog(self)
