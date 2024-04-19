@@ -92,6 +92,7 @@ class LevelD(LevelN):
             ip = IPv4Address(bytes.fromhex(ip))
             logging.debug(f"Joining network at {ip}...")
             if self._level0.join(ip): break
+        logging.debug("Joined network.")
 
         # Place node info on the DHT.
         info = {
