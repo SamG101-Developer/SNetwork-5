@@ -151,8 +151,8 @@ class Level2(LevelN):
 
         # Extend the route to 3 more nodes.
         while len(self._route.nodes) < 4:
-            next_node = self._level1._level0.get_random_node(exclude=[node.address for node in self._route.nodes])
-            next_node = RouteNode(address=next_node.address, identifier=next_node.identifier, public_key=None, e2e_master_key=None)
+            next_node = self._level1._level0.get_random_node(exclude_list=[node.address for node in self._route.nodes])
+            next_node = RouteNode(address=IPv4Address(next_node["ip"]), identifier=bytes.fromhex(next_node["id"]), public_key=None, e2e_master_key=None)
             request = {
                 "command": Level2Protocol.ExtendRoute.value,
                 "token": self._route.token.hex(),

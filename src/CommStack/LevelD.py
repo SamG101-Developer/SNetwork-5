@@ -92,7 +92,8 @@ class LevelD(LevelN):
         # Place node info on the DHT.
         info = {
             "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes.hex(),
-            "ip_address": my_address()
+            "ip": my_address().exploded,
+            "id": this_identifier.hex()
         }
         key_file = f"_crypt/{this_identifier.hex()}.key"
         json.dump(info, open(key_file, "w"))
