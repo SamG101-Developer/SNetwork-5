@@ -164,6 +164,9 @@ class Level0(LevelN):
             return data
 
     def _get_random_key_file(self) -> None:
+        if self._next_node == self._this_node:
+            return
+
         node = self._next_node
         for i in range(3):
             self._send_message(node, Level0Protocol.GetKeyFiles)
