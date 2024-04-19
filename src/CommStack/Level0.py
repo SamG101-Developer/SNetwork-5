@@ -417,8 +417,8 @@ class Level0(LevelN):
 
     def _send_message(self, address: IPv4Address, protocol: Level0Protocol, data: Optional[Dict] = None) -> None:
         data = pickle.dumps({"cmd": protocol.value, **(data or {})})
-        # if self._state == Level0State.Online:
-        self._socket.sendto(data, (address.exploded, self._port))
+        if self._state == Level0State.Online:
+            self._socket.sendto(data, (address.exploded, self._port))
 
     def _send_file(self, address: IPv4Address, file_name: Str) -> None:
         try:
