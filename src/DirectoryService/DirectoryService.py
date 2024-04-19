@@ -1,8 +1,7 @@
-import random
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread
-import json
+import json, logging, random
 
 from src.CommStack.LevelN import LevelN
 from src.CommStack.LevelD import LevelDProtocol
@@ -15,8 +14,9 @@ class DirectoryService(LevelN):
     _cache: List[IPv6Address]
 
     def __init__(self) -> None:
+        logging.debug("Launching directory service")
         self._socket = Socket(AF_INET6, SOCK_DGRAM)
-        self._listen()
+        Thread(target=self._listen).start()
 
     def _listen(self) -> None:
         self._socket.bind(("::", self._port))
@@ -39,9 +39,9 @@ class DirectoryService(LevelN):
         self._socket.sendto(encoded_data, (address.exploded, self._port))
 
     def _handle_join_network(self, address: IPv6Address, request: Json) -> None:
-        # Generate subset of random ids that should be online
-        # Todo: sign this
-        ip_address_subset = random.choices(self._cache, k=3)
+        # Generate subset of random ids that should be online.
+        logging.debug(f"Handling join network request from {address}")
+        ip_address_subset = random.sample(self._cache, k=min(3, len(self._cache)))
         ip_address_subset = [ip.packed.hex() for ip in ip_address_subset]
         self._cache.append(address)
 
@@ -50,6 +50,8 @@ class DirectoryService(LevelN):
             "command": LevelDProtocol.Bootstrap.value,
             "ips": ip_address_subset
         }
+
+        # Todo: sign this
         self._send(address, response)
 
     @property
