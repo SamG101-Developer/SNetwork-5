@@ -55,6 +55,8 @@ class Level1(LevelN):
         self._conversations = {}
 
         # Get the node identifier and static secret key.
+        while not os.path.exists("_crypt/secret_key.pem"):
+            pass
         self._this_identifier = KeyManager.get_identifier()
         self._this_static_secret_key = KeyManager.get_static_secret_key()
 
