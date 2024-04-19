@@ -142,7 +142,7 @@ class Level2(LevelN):
 
         # Encrypt and send the request.
         raw_data = json.dumps(data).encode()
-        encrypted_data = connection.token + SymmetricEncryption.encrypt(connection.e2e_master_key, raw_data)
+        encrypted_data = connection.token + SymmetricEncryption.encrypt(raw_data, connection.e2e_master_key)
         self._socket.sendto(encrypted_data, (connection.address.exploded, self._port))
 
     @property

@@ -116,6 +116,7 @@ class Level1(LevelN):
         # Prepare static and ephemeral keys.
         this_ephemeral_key_pair = KEM.generate_key_pair()
         this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes, that_identifier)
+        logging.debug(f"This ephemeral public key: {this_ephemeral_key_pair.public_key.bytes.hex()}")
 
         # Create the handshake request.
         request = {
@@ -143,6 +144,7 @@ class Level1(LevelN):
         that_ephemeral_public_key = PubKey.from_bytes(bytes.fromhex(request["ephemeral_public_key"]))
         that_ephemeral_public_key_signature = bytes.fromhex(request["ephemeral_public_key_signature"])
         that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
+        logging.debug(f"Their ephemeral public key: {that_ephemeral_public_key.bytes.hex()}")
 
         # Create the connection
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
