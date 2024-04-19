@@ -144,7 +144,10 @@ class Level0(LevelN):
         self._state = Level0State.Stop
 
     def get(self, file_name: Str) -> Bytes:
-        file_key = DHash.hash(file_name.encode())
+        logging.debug(f"Searching DHT for {file_name}")
+        file_name_stripped = os.path.split(file_name)[1]
+
+        file_key = DHash.hash(file_name_stripped.encode())
         if self._file_in_domain(file_key) and file_name in self._files:
             return open(os.path.join(self._directory, file_name), "rb").read()
 
