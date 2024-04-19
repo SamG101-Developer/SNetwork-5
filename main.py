@@ -1,7 +1,13 @@
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QErrorMessage
 import logging, os, sys
 
 from src.Gui.MainWindow import MainWindow
+
+
+def custom_excepthook(type, value, traceback) -> None:
+    QErrorMessage.qtHandler().showMessage(f"{type.__name__}: {value}")
+    logging.exception(f"{type.__name__}: {value}")
+    sys.__excepthook__(type, value, traceback)
 
 
 def main() -> None:
@@ -9,7 +15,7 @@ def main() -> None:
         os.mkdir("_crypt")
 
     logging.basicConfig(level=logging.DEBUG)
-    sys.excepthook = lambda *args: sys.__excepthook__(*args)
+    sys.excepthook = custom_excepthook
     app = QApplication(sys.argv)
     window = MainWindow()
     sys.exit(app.exec())
