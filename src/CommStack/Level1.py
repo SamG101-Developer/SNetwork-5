@@ -181,6 +181,7 @@ class Level1(LevelN):
         # Verify the challenge received from the accepting node.
         signed_challenge = bytes.fromhex(request["challenge_signature"])
         challenge = bytes.fromhex(request["challenge"])
+        logging.debug("Verifying challenge")
         if not Signer.verify(that_static_public_key, challenge, signed_challenge, self._this_identifier):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
@@ -202,6 +203,7 @@ class Level1(LevelN):
             return
 
         # Sign the challenge response and send it to the accepting node.
+        logging.debug("Signing challenge")
         challenge_response = Signer.sign(self._this_static_secret_key, challenge, connection.identifier)
         response = {
             "command": Level1Protocol.ChallengeResponse.value,
@@ -228,6 +230,7 @@ class Level1(LevelN):
         # Verify the challenge response.
         challenge = connection.challenge
         challenge_response = bytes.fromhex(request["challenge_response"])
+        logging.debug("Verifying challenge response")
         if not Signer.verify(that_static_public_key, challenge, challenge_response, self._this_identifier):
             response = {
                 "command": Level1Protocol.CloseConnection.value,
@@ -237,6 +240,7 @@ class Level1(LevelN):
             return
 
         # Create the response to accept the connection, and wrap a master key for end-to-end encryption.
+        logging.debug("Wrapping master key")
         master_key = os.urandom(32)
         kem_wrapped_master_key = KEM.kem_wrap(connection.ephemeral_public_key, master_key).encapsulated
         kem_wrapped_master_key_signed = Signer.sign(self._this_static_secret_key, kem_wrapped_master_key, that_identifier)
