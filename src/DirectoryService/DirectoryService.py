@@ -33,6 +33,7 @@ class DirectoryService(LevelN):
             case LevelDProtocol.JoinNetwork.value:
                 self._handle_join_network(address, request)
             case 14:
+                logging.debug(f"Handling leave network request from {address}")
                 self._cache.remove(address)
 
     def _send(self, address: IPv4Address, data: Json) -> None:
