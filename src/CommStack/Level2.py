@@ -151,7 +151,7 @@ class Level2(LevelN):
 
         # Extend the route to 3 more nodes.
         while len(self._route.nodes) < 4:
-            next_node = DNet.get_random_node(exclude=[node.address for node in self._route.nodes])
+            next_node = self._level1._level0.get_random_node(exclude=[node.address for node in self._route.nodes])
             next_node = RouteNode(address=next_node.address, identifier=next_node.identifier, public_key=None, e2e_master_key=None)
             request = {
                 "command": Level2Protocol.ExtendRoute.value,

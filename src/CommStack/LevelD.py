@@ -94,6 +94,6 @@ class LevelD(LevelN):
             "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes.hex(),
             "ip_address": my_address()
         }
-        key_file = f"_crypt/{this_identifier.hex()}.csv"
+        key_file = f"_crypt/{this_identifier.hex()}.key"
         json.dump(info, open(key_file, "w"))
         self._level0.put(key_file)

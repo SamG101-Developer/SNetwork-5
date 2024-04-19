@@ -1,3 +1,4 @@
+import json
 import random
 from enum import Enum
 from hashlib import md5
@@ -43,7 +44,6 @@ class Level0Protocol(LevelNProtocol, Enum):
     MigrateData = 11
     FileBackup = 12
     GetKeyFiles = 13
-    KeyFiles = 14
 
 
 class Level0(LevelN):
@@ -96,6 +96,7 @@ class Level0(LevelN):
         Thread(target=self._listen).start()
         Thread(target=self._ping_prev_node).start()
         Thread(target=self._ping_next_node).start()
+        Thread(target=self._refresh_key_cache).start()
 
     def join(self, joining_address: IPv4Address) -> Bool:
         timeout = time.time()
@@ -154,18 +155,25 @@ class Level0(LevelN):
 
         return open(os.path.join(self._directory, file_name), "rb").read()
 
-    def get_random_key_file(self) -> Str:
-        node_info_files = []
+    def get_random_node(self, exclude_list: List[IPv4Address]) -> Dict:
+        while True:
+            file_name = random.choice(self._node_info_files)
+            data = json.load(open(os.path.join(self._directory, file_name), "r"))
+            if IPv4Address(data["ip"]) in exclude_list:
+                continue
+            return data
+
+    def _get_random_key_file(self) -> None:
         node = self._next_node
         for i in range(3):
             self._send_message(node, Level0Protocol.GetKeyFiles)
-            node = IPv4Address(self._node_info_files[i]["ip"])
 
-
+            node = IPv4Address(random.choice(self._node_info_files)["ip"])
+            while node.exploded == my_address().exploded:
+                node = IPv4Address(random.choice(self._node_info_files)["ip"])
 
     def put(self, file_name: Str) -> None:
         file_name_stripped = os.path.split(file_name)[1]
-        file_name_stripped = os.path.splitext(file_name)[0]
         file_key = DHash.hash(file_name_stripped.encode())
 
         # If the file is in the domain of the current node, save it.
@@ -259,12 +267,18 @@ class Level0(LevelN):
             self._next_node = self._this_node
             self._next_node_pings.set(0)
 
+    def _refresh_key_cache(self) -> None:
+        self._get_random_key_file()
+        time.sleep(10)
+
     def _put_file(self, file_name: Str) -> None:
         data = open(file_name, "rb").read()
         open(os.path.join(self._directory, file_name), "wb").write(data)
 
     def _reg_file(self, file_name: Str) -> None:
         self._files.append(file_name)
+        if file_name.endswith(".key"):
+            self._node_info_files.append(file_name)
         self._send_file_backups(self._next_node)
 
     @property
@@ -302,6 +316,8 @@ class Level0(LevelN):
                 self._backup_clear()
             case Level0Protocol.MigrateData:
                 self._handle_migration(address)
+            case Level0Protocol.GetKeyFiles:
+                self._handle_get_key_files(address)
 
     def _handle_ping_from_prev_node(self, address: IPv4Address) -> None:
         # Reset the ping count of the previous node.
@@ -367,6 +383,11 @@ class Level0(LevelN):
             self._files.remove(file_name)
 
         self._send_file_backups(self._next_node)
+
+    def _handle_get_key_files(self, address: IPv4Address) -> None:
+        for file in self._files:
+            if file.endswith(".key"):
+                self._send_file(address, file)
 
     def _backup_restore(self) -> None:
         self._files[-1:] = self._backup_files.copy()
