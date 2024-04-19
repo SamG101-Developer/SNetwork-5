@@ -30,8 +30,8 @@ class MainWindow(QWidget):
             parent=self, text="Store Data", icon="./icons/store_data.svg", clicked=self.store, disabled=True)
         self._retrieve_button = AppItem(
             parent=self, text="Retrieve Data", icon="./icons/retrieve_data.svg", clicked=self.retrieve, disabled=True)
-        self._dummy_button_l = AppItem(
-            parent=self, text="", disabled=True)
+        self._host_hidden_service_button = AppItem(
+            parent=self, text="Host hidden service", icon="./icons/hidden_service.svg", disabled=True)
         self._directory_button = AppItem(
             parent=self, text="Directory Node", icon="./icons/directory_node.svg", clicked=self.directory, large=True)
         self._dummy_button_r = AppItem(
@@ -42,7 +42,7 @@ class MainWindow(QWidget):
         layout.addWidget(self._route_button, 1, 1)
         layout.addWidget(self._store_button, 1, 2)
         layout.addWidget(self._retrieve_button, 1, 3)
-        layout.addWidget(self._dummy_button_l, 2, 0)
+        layout.addWidget(self._host_hidden_service_button, 2, 0)
         layout.addWidget(self._directory_button, 2, 1, 1, 2)
         layout.addWidget(self._dummy_button_r, 2, 3)
 
@@ -64,6 +64,7 @@ class MainWindow(QWidget):
         self._route_button._activated = True
         self._route_button.setDisabled(True)
         self._store_button.setDisabled(False)
+        self._host_hidden_service_button.setDisabled(False)
         self._retrieve_button.setDisabled(False)
 
         self._stack.handle_user_command("route")
