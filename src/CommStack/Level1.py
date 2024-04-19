@@ -144,10 +144,7 @@ class Level1(LevelN):
         that_identifier = bytes.fromhex(request["identifier"])
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_public_key"])
         that_ephemeral_public_key_signature = bytes.fromhex(request["ephemeral_public_key_signature"])
-
-        pem = self._level0.get(f"{that_identifier.hex()}.key").decode()
-        print(pem)
-        that_static_public_key = PubKey.from_str(pem)
+        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Create the connection
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
