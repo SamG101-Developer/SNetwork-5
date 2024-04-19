@@ -43,7 +43,7 @@ class DirectoryService(LevelN):
         # Generate subset of random ids that should be online.
         logging.debug(f"Handling join network request from {address}")
         cache = self._cache.copy()
-        if address in cache:
+        while address in cache:
             cache.remove(address)
 
         ip_address_subset = random.sample(self._cache, k=min(3, len(self._cache)))
