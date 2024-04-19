@@ -62,6 +62,7 @@ class RouteNode:
 class Route:
     token: Bytes
     nodes: List[RouteNode]
+    entry_token: Optional[Bytes] = field(default=None, init=False)
 
 
 @dataclass
@@ -167,6 +168,8 @@ class Level2(LevelN):
                 "next_node_id": next_node.identifier.hex()
             }
 
+            logging.debug(f"Extending route to {next_node.address}.")
+
             # Tunnel the message to the current final node, to extend the route.
             if self._route.nodes:
                 self._tunnel_message_forward(self._route.token, self._route.nodes[-1].identifier, request)
@@ -177,6 +180,7 @@ class Level2(LevelN):
                     "token": entry_connection.token.hex(),
                     "route_token": request["route_token"]
                 }
+                self._route.entry_token = entry_connection.token
                 self._send(entry_connection, request)
 
             self._route.nodes.append(next_node)
@@ -345,7 +349,7 @@ class Level2(LevelN):
         for i in range(target_index - 1, -1, -1):
             message = {
                 "command": Level2Protocol.Forward.value,
-                "token": self._route.nodes[i].identifier,
+                "token": self._route.entry_token,
                 "message": SymmetricEncryption.encrypt(self._tunnel_keys[route_token].e2e_master_key, json.dumps(message).encode()).hex()
             }
 
