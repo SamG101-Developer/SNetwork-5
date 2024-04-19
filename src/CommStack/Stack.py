@@ -7,8 +7,8 @@ class Stack:
     _level2: Level2
 
     def __init__(self):
-        self._levelD = LevelD(self._level2._level1._level0)
         self._level2 = Level2()
+        self._levelD = LevelD(self._level2._level1._level0)
 
     def handle_create_route(self):
         self._level2.create_route()
