@@ -40,7 +40,6 @@ class LevelD(LevelN):
         # Make sure keys exist.
         if not os.path.exists("_crypt/secret_key.pem"):
             logging.debug("Generating keys.")
-            os.mkdir("_crypt")
             this_static_key_pair = Signer.generate_key_pair()
             identifier = Hasher.hash(this_static_key_pair.public_key.bytes, SHA3_256())
             open("_crypt/public_key.pem", "w").write(this_static_key_pair.public_key.str)
