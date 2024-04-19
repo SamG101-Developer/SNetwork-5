@@ -180,13 +180,13 @@ class Level0(LevelN):
                 node = IPv4Address(random.choice(self._node_info_files)["ip"])
 
     def put(self, file_name: Str) -> None:
-        file_name = os.path.split(file_name)[1]
-        file_key = DHash.hash(file_name.encode())
+        file_name_stripped = os.path.split(file_name)[1]
+        file_key = DHash.hash(file_name_stripped.encode())
 
         # If the file is in the domain of the current node, save it.
         if self._file_in_domain(file_key):
             self._put_file(file_name)
-            self._reg_file(file_name)
+            self._reg_file(file_name_stripped)
             return
 
         # Otherwise, send the file to the node whose domain it is in.
@@ -280,7 +280,8 @@ class Level0(LevelN):
 
     def _put_file(self, file_name: Str) -> None:
         data = open(file_name, "rb").read()
-        open(os.path.join(self._directory, file_name), "wb").write(data)
+        file_name_stripped = os.path.split(file_name)[1]
+        open(os.path.join(self._directory, file_name_stripped), "wb").write(data)
 
     def _reg_file(self, file_name: Str) -> None:
         self._files.append(file_name)
