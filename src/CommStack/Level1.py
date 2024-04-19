@@ -111,7 +111,7 @@ class Level1(LevelN):
         return LEVEL_1_PORT
 
     def connect(self, address: IPv4Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
-        logging.debug(f"Connecting to {address}")
+        logging.debug(f"Connecting to {that_identifier}@{address}")
 
         token = token or os.urandom(32)
 
