@@ -410,7 +410,10 @@ class Level0(LevelN):
             self._socket.sendto(data, (address.exploded, self._port))
 
     def _send_file(self, address: IPv4Address, file_name: Str) -> None:
-        data = open(file_name, "rb").read()
+        try:
+            data = open(file_name, "rb").read()
+        except:
+            data = open(os.path.join(self._directory, file_name), "rb").read()
         file_name_stripped = os.path.split(file_name)[1]
         self._send_message(address, Level0Protocol.File, {"file_name": file_name_stripped, "file_bytes": data})
 
