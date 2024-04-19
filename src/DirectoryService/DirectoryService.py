@@ -15,6 +15,7 @@ class DirectoryService(LevelN):
 
     def __init__(self) -> None:
         super().__init__()
+        self._cache = []
         logging.debug("Launching directory service")
         Thread(target=self._listen).start()
 

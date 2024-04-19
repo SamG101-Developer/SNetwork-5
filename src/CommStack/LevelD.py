@@ -3,7 +3,6 @@ from ipaddress import IPv4Address
 from threading import Thread
 import logging, json, os
 
-from PyQt6.QtWidgets import QErrorMessage
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
 from src.Crypt.AsymmetricKeys import PubKey
@@ -85,9 +84,7 @@ class LevelD(LevelN):
         # Popup message if there are currently no nodes in the network.
         node_ip_addresses = request["ips"]
         if not node_ip_addresses:
-            error_message = QErrorMessage()
-            error_message.showMessage("No nodes in the network.")
-            error_message.exec()
+            logging.error("No nodes in the network.")
             return
 
         # Add the node to the DHT.
