@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 from ipaddress import IPv4Address
 from enum import Enum
-from socket import socket as Socket, AF_INET, SOCK_DGRAM
 from threading import Thread
 import json, os, struct, time
 
@@ -96,6 +95,7 @@ class Level1(LevelN):
                 self._handle_close_connection(address, request)
             case _:
                 logging.error(f"Unknown command: {request['command']}")
+                logging.error(f"Conversation state: {self._conversations[token].state}")
 
     def _send(self, connection: Connection, data: Json) -> None:
         # Send the unencrypted data to the address.
