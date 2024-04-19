@@ -242,7 +242,7 @@ class Level2(LevelN):
 
         # Determine the identifier and static key of the new node.
         that_identifier = self._route.nodes[-1].identifier
-        that_static_public_key = PubKey.from_bytes(self._level1._level0.get(f"{that_identifier}.key"))
+        that_static_public_key = PubKey.from_bytes(self._level1._level0.get(f"{that_identifier.hex()}.key"))
 
         # Verify the signature, and add the ephemeral public key to the route.
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_pub_key"])
