@@ -1,5 +1,6 @@
 from src.CommStack.Level2 import Level2
 from src.CommStack.LevelD import LevelD
+from threading import Thread
 
 
 class Stack:
@@ -7,7 +8,17 @@ class Stack:
     _level2: Level2
 
     def __init__(self):
+        self._level2 = None
+        self._levelD = None
+        Thread(target=self._init_level_2).start()
+        Thread(target=self._init_level_D).start()
+
+    def _init_level_2(self):
         self._level2 = Level2()
+
+    def _init_level_D(self):
+        while not self._level2:
+            pass
         self._levelD = LevelD(self._level2._level1._level0)
 
     def handle_create_route(self):
