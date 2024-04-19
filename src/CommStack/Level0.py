@@ -279,7 +279,7 @@ class Level0(LevelN):
                 self._send_message(self._next_node, Level0Protocol.Ping)
                 self._next_node_pings += 1
 
-            logging.debug("Previous node offline")
+            logging.debug("Next node offline")
 
             # The node has become unresponsive, so remove it from the network.
             self._next_node = self._this_node
