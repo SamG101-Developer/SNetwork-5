@@ -34,10 +34,13 @@ class Stack:
         self.levelD = LevelD(self.level0)
 
     def handle_create_route(self):
+        while not self.level2: pass
         self.level2.create_route()
 
     def store_file(self, file_directory) -> None:
+        while not self.level0: pass
         self.level0.put(file_directory)
 
     def retrieve_file(self, file_name) -> None:
+        while not self.level0: pass
         self.level0.get(file_name)
