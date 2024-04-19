@@ -3,7 +3,7 @@ import random
 from enum import Enum
 from hashlib import md5
 from ipaddress import IPv4Address
-from socket import socket as Socket, AF_INET6, SOCK_DGRAM, SHUT_RDWR
+from socket import socket as Socket, AF_INET, SOCK_DGRAM, SHUT_RDWR
 from threading import Thread
 import os, pickle, time
 
@@ -80,7 +80,7 @@ class Level0(LevelN):
         self._heartbeat_interval = 0.5
         self._prev_node_pings = AtomicInt(0)
         self._next_node_pings = AtomicInt(0)
-        self._socket = Socket(AF_INET6, SOCK_DGRAM)
+        self._socket = Socket(AF_INET, SOCK_DGRAM)
 
         # File oriented attributes.
         self._files = []

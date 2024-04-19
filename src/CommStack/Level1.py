@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from ipaddress import IPv4Address
 from enum import Enum
-from socket import socket as Socket, AF_INET6, SOCK_DGRAM
+from socket import socket as Socket, AF_INET, SOCK_DGRAM
 from threading import Thread
 import json, os, struct, time
 
@@ -46,8 +46,8 @@ class Level1(LevelN):
 
     def __init__(self) -> None:
         # Create the insecure and secure sockets.
-        self._socket = Socket(AF_INET6, SOCK_DGRAM)
-        self._socket_sec = Socket(AF_INET6, SOCK_DGRAM)
+        self._socket = Socket(AF_INET, SOCK_DGRAM)
+        self._socket_sec = Socket(AF_INET, SOCK_DGRAM)
 
         # Store the DHT node and conversation state.
         self._level0 = Level0()

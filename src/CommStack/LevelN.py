@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from ipaddress import IPv4Address
 from socket import socket as Socket
 
-from src.Utils.Types import Bool, Bytes, Json, Int, Optional
+from PyQt6.QtCore import QObject, pyqtSignal
+
+from src.Utils.Types import Bytes, Json, Int, Optional
 from src.Crypt.AsymmetricKeys import SecKey
 
 

@@ -1,5 +1,5 @@
 from ipaddress import IPv4Address
-from socket import socket as Socket, AF_INET6, SOCK_DGRAM
+from socket import socket as Socket, AF_INET, SOCK_DGRAM
 from threading import Thread
 import json, logging, random
 
@@ -15,7 +15,7 @@ class DirectoryService(LevelN):
 
     def __init__(self) -> None:
         logging.debug("Launching directory service")
-        self._socket = Socket(AF_INET6, SOCK_DGRAM)
+        self._socket = Socket(AF_INET, SOCK_DGRAM)
         Thread(target=self._listen).start()
 
     def _listen(self) -> None:
