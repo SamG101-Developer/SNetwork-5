@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key, l
 class KeyManager:
     @staticmethod
     def get_identifier() -> Bytes:
-        id = open("_crypt/id", "r").read()
+        id = open("_crypt/identifier.txt", "r").read()
         return bytes.fromhex(id)
 
     @staticmethod

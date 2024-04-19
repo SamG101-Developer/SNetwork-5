@@ -1,7 +1,7 @@
 from enum import Enum
 from ipaddress import IPv4Address
 from threading import Thread
-import json, os
+import logging, json, os
 
 from PyQt6.QtWidgets import QErrorMessage
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
@@ -34,6 +34,7 @@ class LevelD(LevelN):
     def _bootstrap(self) -> None:
         # Make sure keys exist.
         if not os.path.exists("_crypt"):
+            logging.info("Generating keys.")
             os.mkdir("_crypt")
             this_static_key_pair = Signer.generate_key_pair()
             identifier = Hasher.hash(this_static_key_pair.public_key.bytes, SHA3_256())
