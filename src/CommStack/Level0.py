@@ -180,8 +180,8 @@ class Level0(LevelN):
                 node = IPv4Address(random.choice(self._node_info_files)["ip"])
 
     def put(self, file_name: Str) -> None:
-        file_name_stripped = os.path.split(file_name)[1]
-        file_key = DHash.hash(file_name_stripped.encode())
+        file_name = os.path.split(file_name)[1]
+        file_key = DHash.hash(file_name.encode())
 
         # If the file is in the domain of the current node, save it.
         if self._file_in_domain(file_key):
