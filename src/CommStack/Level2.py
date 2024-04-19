@@ -78,8 +78,8 @@ class Level2(LevelN):
     _route_backward_token_map: Dict[Bytes, Bytes]
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]
 
-    def __init__(self):
-        self._level1 = Level1()
+    def __init__(self, level1: Level1):
+        self._level1 = level1
         self._route = None
 
         self._route_forward_token_map = {}

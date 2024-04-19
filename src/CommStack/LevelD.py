@@ -78,7 +78,7 @@ class LevelD(LevelN):
         return LEVEL_D_PORT
 
     def _handle_bootstrap(self, request: Json) -> None:
-        # Ge this node's identifier.
+        # Get this node's identifier.
         this_identifier = Hasher.hash(open("_crypt/public_key.pem").read().encode(), SHA3_256())
 
         # Popup message if there are currently no nodes in the network.
