@@ -95,7 +95,7 @@ class Level1(LevelN):
             case Level1Protocol.CloseConnection.value:
                 self._handle_close_connection(address, request)
             case _:
-                return
+                logging.error(f"Unknown command: {request['command']}")
 
     def _send(self, connection: Connection, data: Json) -> None:
         # Send the unencrypted data to the address.
