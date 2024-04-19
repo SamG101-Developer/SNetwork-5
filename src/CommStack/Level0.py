@@ -259,7 +259,7 @@ class Level0(LevelN):
 
             # Handle node switching.
             self._send_message(self._next_node, Level0Protocol.LookupThenNext, {"key": self._key})
-            while self._next_node == self._this_node or self._key not in self._key_owners:
+            while self._key not in self._key_owners:
                 pass
             self._prev_node = self._key_owners.get(self._key)
             self._send_message(self._prev_node, Level0Protocol.UpdateNext)
