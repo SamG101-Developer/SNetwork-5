@@ -27,9 +27,10 @@ from src.Crypt.KEM import KEM
 from src.Crypt.Sign import Signer
 from src.Crypt.Symmetric import SymmetricEncryption
 from src.Utils.Types import Bytes, Dict, Int, Json, List, Optional
+from src.CONFIG import LEVEL_2_PORT
 
 
-class Level2Protocol(Enum, LevelNProtocol):
+class Level2Protocol(LevelNProtocol, Enum):
     ExtendRoute = 0
     ExtendRouteAccept = 1
     ExtendRouteReject = 2
@@ -137,7 +138,7 @@ class Level2(LevelN):
 
     @property
     def _port(self) -> Int:
-        return 40002
+        return LEVEL_2_PORT
 
     def create_route(self) -> None:
         # Create a new route, with this node as the client node.

@@ -21,9 +21,10 @@ from src.Crypt.Sign import Signer
 from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
 from src.CommStack.Level0 import Level0
 from src.Utils.Types import Bytes, Optional, Dict, List, Json, Int
+from src.CONFIG import LEVEL_1_PORT
 
 
-class Level1Protocol(Enum, LevelNProtocol):
+class Level1Protocol(LevelNProtocol, Enum):
     RequestConnection = 0
     SignatureChallenge = 1
     ChallengeResponse = 2
@@ -100,7 +101,7 @@ class Level1(LevelN):
 
     @property
     def _port(self) -> Int:
-        return 40001
+        return LEVEL_1_PORT
 
     def connect(self, address: IPv6Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
         token = token or os.urandom(32)

@@ -5,15 +5,14 @@ from ipaddress import IPv6Address
 from threading import Thread
 
 from src.CommStack.Level0 import Level0
-from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
+from src.CommStack.LevelN import LevelN, LevelNProtocol
 from src.Crypt.Hash import Hasher, SHA3_256
 from src.Crypt.Sign import Signer
-from src.Utils.Types import Json, Int, Bool
+from src.Utils.Types import Json, Int
+from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP
 
-DIRECTORY_IP = IPv6Address("fe80::399:3723:1f1:ea97")
 
-
-class LevelDProtocol(Enum, LevelNProtocol):
+class LevelDProtocol(LevelNProtocol, Enum):
     JoinNetwork = 0
     Bootstrap = 1
 
@@ -40,16 +39,17 @@ class LevelD(LevelN):
         this_static_public_key = open("_crypt/public_key.pem").read()
         this_identifier = Hasher.hash(this_static_public_key.encode(), SHA3_256())
         request = {
-            "command": LevelDProtocol.JoinNetwork.value,
-            "public_key": this_static_public_key,
-            "identifier": this_identifier.hex()}
+            "command": LevelDProtocol.JoinNetwork.value}
 
         # Send the request to the directory node.
-        connection = Connection(DIRECTORY_IP, this_identifier, os.urandom(32), LevelDProtocol.JoinNetwork, None, None, None, None)
-        self._send(connection, request)
+        self._send(DIRECTORY_IP, request)
 
     def _listen(self) -> None:
-        ...
+        self._socket.bind(("::", self._port))
+        while True:
+            data, address = self._socket.recvfrom(1024)
+            request = json.loads(data)
+            Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         if "command" not in request:
@@ -60,22 +60,22 @@ class LevelD(LevelN):
             case LevelDProtocol.Bootstrap.value:
                 self._handle_bootstrap(request)
 
-    def _send(self, connection: Connection, data: Json) -> None:
+    def _send(self, address: IPv6Address, data: Json) -> None:
         encoded_data = json.dumps(data).encode()
-        self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
+        self._socket.sendto(encoded_data, (address.exploded, self._port))
 
     @property
     def _port(self) -> Int:
-        return 40003
+        return LEVEL_D_PORT
 
     def _handle_bootstrap(self, request: Json) -> None:
         # Ge this node's identifier.
         this_identifier = Hasher.hash(open("_crypt/public_key.pem").read().encode(), SHA3_256())
 
         # Add the node to the DHT.
-        node_ip_addresses = request["node_ip_addresses"]
+        node_ip_addresses = request["ips"]
         for ip in node_ip_addresses:
-            ip = IPv6Address(ip)
+            ip = IPv6Address(bytes.fromhex(ip))
             if self._level0.join(ip): break
 
         # Place node info on the DHT.

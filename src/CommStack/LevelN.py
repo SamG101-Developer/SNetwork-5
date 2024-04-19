@@ -39,7 +39,7 @@ class LevelN(ABC):
     def _send(self, connection: Connection, data: Json) -> None:
         ...
 
-    @abstractmethod
     @property
+    @abstractmethod
     def _port(self) -> Int:
         ...

@@ -8,7 +8,7 @@ import os, pickle, time
 from src.CommStack.LevelN import LevelN, LevelNProtocol
 from src.Utils.Atomic import AtomicInt
 from src.Utils.Types import Dict, Int, List, Optional, Str, Bytes, Bool, Float
-
+from src.CONFIG import LEVEL_0_PORT
 
 class DHash:
     @staticmethod
@@ -25,7 +25,7 @@ class Level0State(Enum):
     Online = 1
 
 
-class Level0Protocol(Enum, LevelNProtocol):
+class Level0Protocol(LevelNProtocol, Enum):
     Ping = 0
     LookupThenPrev = 1
     LookupThenNext = 2
@@ -253,7 +253,7 @@ class Level0(LevelN):
 
     @property
     def _port(self) -> Int:
-        return 40000
+        return LEVEL_0_PORT
 
     def _handle_command(self, address: IPv6Address, data: Dict) -> None:
         match Level0Protocol(data.get("cmd")):
