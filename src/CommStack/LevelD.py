@@ -33,6 +33,8 @@ class LevelD(LevelN):
         logging.debug("Layer D Ready")
 
     def _bootstrap(self) -> None:
+        logging.debug("Bootstrapping network.")
+
         # Make sure keys exist.
         if not os.path.exists("_crypt/secret_key.pem"):
             logging.debug("Generating keys.")
