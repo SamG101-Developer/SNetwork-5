@@ -2,7 +2,7 @@ import os
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.padding import OAEP, MGF1
-from cryptography.hazmat.primitives.hashes import SHA3_256
+from cryptography.hazmat.primitives.hashes import SHA256
 
 from src.Crypt.AsymmetricKeys import SecKey, PubKey
 from src.Crypt.KeyPair import KeyPair, KEMKeyPair
@@ -29,8 +29,8 @@ class KEM:
         encapsulated_key = their_ephemeral_public_key.encrypt(
             plaintext=decapsulated_key,
             padding=OAEP(
-                mgf=MGF1(SHA3_256()),
-                algorithm=SHA3_256(),
+                mgf=MGF1(SHA256()),
+                algorithm=SHA256(),
                 label=None
             ))
         return KEMKeyPair(encapsulated_key, decapsulated_key)
@@ -41,8 +41,8 @@ class KEM:
         decapsulated_key = my_ephemeral_secret_key.decrypt(
             ciphertext=encapsulated_key,
             padding=OAEP(
-                mgf=MGF1(SHA3_256()),
-                algorithm=SHA3_256(),
+                mgf=MGF1(SHA256()),
+                algorithm=SHA256(),
                 label=None
             ))
         return KEMKeyPair(encapsulated_key, decapsulated_key)
