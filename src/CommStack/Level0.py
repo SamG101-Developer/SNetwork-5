@@ -157,6 +157,8 @@ class Level0(LevelN):
         while file_key not in self._key_owners:
             pass
         receiver = self._key_owners.get(file_key)
+
+        logging.debug(f"Sent request to {receiver} for {file_name}")
         self._send_message(receiver, Level0Protocol.FileRequest, {"file_name": file_name_stripped})
 
         while not os.path.exists(os.path.join(self._directory, file_name_stripped)):
