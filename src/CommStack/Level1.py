@@ -242,6 +242,7 @@ class Level1(LevelN):
         # Create the response to accept the connection, and wrap a master key for end-to-end encryption.
         logging.debug("Wrapping master key")
         master_key = os.urandom(32)
+        logging.debug(f"Master key: {master_key.hex()} ({len(master_key)} bytes)")
         kem_wrapped_master_key = KEM.kem_wrap(connection.ephemeral_public_key, master_key).encapsulated
         kem_wrapped_master_key_signed = Signer.sign(self._this_static_secret_key, kem_wrapped_master_key, that_identifier)
         response = {
@@ -279,6 +280,7 @@ class Level1(LevelN):
 
         # Unwrap the master key and store it.
         master_key = KEM.kem_unwrap(connection.ephemeral_secret_key, kem_wrapped_master_key).decapsulated
+        logging.debug(f"Master key: {master_key.hex()} ({len(master_key)} bytes)")
 
         # Mark the connection as accepted.
         connection.e2e_master_key = master_key
