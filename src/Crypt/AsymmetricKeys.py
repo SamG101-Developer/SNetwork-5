@@ -3,7 +3,8 @@ from __future__ import annotations
 from cryptography.hazmat.primitives.asymmetric.padding import AsymmetricPadding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey, RSAPrivateKey
 from cryptography.hazmat.primitives.hashes import HashAlgorithm
-from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PublicFormat, PrivateFormat
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PublicFormat, PrivateFormat, \
+    load_pem_public_key
 from cryptography.hazmat.primitives.serialization import load_der_public_key, load_der_private_key
 
 from src.Utils.Types import Bytes, Str
@@ -26,6 +27,10 @@ class PubKey:
     @staticmethod
     def from_bytes(bytes_: Bytes) -> PubKey:
         return PubKey(load_der_public_key(bytes_))
+
+    @staticmethod
+    def from_str(str_: Str) -> PubKey:
+        return PubKey(load_pem_public_key(str_.encode()))
 
     def verify(self, data: Bytes, signature: Bytes, padding: AsymmetricPadding, algorithm: HashAlgorithm) -> None:
         self._public_key.verify(signature, data, padding, algorithm)
