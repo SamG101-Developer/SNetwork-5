@@ -204,7 +204,7 @@ class Level1(LevelN):
         # Sign the challenge response and send it to the accepting node.
         challenge_response = Signer.sign(self._this_static_secret_key, challenge, connection.identifier)
         response = {
-            "command": Level1Protocol.ChallengeResponse,
+            "command": Level1Protocol.ChallengeResponse.value,
             "token": request["token"],
             "challenge_response": challenge_response}
 

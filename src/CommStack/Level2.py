@@ -307,7 +307,7 @@ class Level2(LevelN):
 
             tunnel_key = self._tunnel_keys[route_token].e2e_master_key
             next_layer = {
-                "command": Level2Protocol.Forward,
+                "command": Level2Protocol.Forward.value,
                 "token": self._route_backward_token_map[token],
                 "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(request).encode()).hex()
             }
@@ -323,7 +323,7 @@ class Level2(LevelN):
         # Reverse tunnelling starts at any route node and ends at the client node.
         tunnel_key = self._tunnel_keys[route_token].e2e_master_key
         message = {
-            "command": Level2Protocol.Forward,
+            "command": Level2Protocol.Forward.value,
             "token": token,
             "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(message).encode()).hex()
         }
@@ -342,7 +342,7 @@ class Level2(LevelN):
         target_index = next(i for i, node in enumerate(self._route.nodes) if node.identifier == target_node_id)
         for i in range(target_index - 1, -1, -1):
             message = {
-                "command": Level2Protocol.Forward,
+                "command": Level2Protocol.Forward.value,
                 "token": self._route.nodes[i].identifier,
                 "message": SymmetricEncryption.encrypt(self._tunnel_keys[route_token].e2e_master_key, json.dumps(message).encode()).hex()
             }
