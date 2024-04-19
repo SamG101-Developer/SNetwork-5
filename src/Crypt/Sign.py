@@ -30,7 +30,7 @@ class Signer:
 
     @staticmethod
     def sign(my_static_private_key: SecKey, message: Bytes, their_id: Bytes) -> Bytes:
-        # Ad the id to the message, hash it, and sign it.
+        # Add the hashed id to the message, hash it, and sign it.
         message += Hasher.hash(their_id, SHA3_224())
         signature = my_static_private_key.sign(
             data=message,
@@ -44,7 +44,9 @@ class Signer:
         recipient_id = message[-SHA3_224.digest_size:]
 
         try:
-            assert recipient_id == Hasher.hash(my_id, SHA3_224()), f"Recipient ID {str(recipient_id)[:20]}... != {str(my_id)[:20]}..."
+            hashed_id = Hasher.hash(my_id, SHA3_224())
+            assert recipient_id == hashed_id, f"Recipient ID {recipient_id[:20]}... != {hashed_id[:20]}..."
+
             their_static_public_key.verify(
                 data=message,
                 signature=signature,
