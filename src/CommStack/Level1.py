@@ -103,6 +103,7 @@ class Level1(LevelN):
         encoded_data = json.dumps(data).encode()
         # that_static_public_key = PubKey.from_bytes(self._level0.get(f"{connection.identifier.hex()}.key"))
         # encoded_data = KEM.kem_wrap(that_static_public_key, encoded_data).encapsulated
+        print(f"Sending data: {encoded_data} to {connection.address.exploded}")
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
