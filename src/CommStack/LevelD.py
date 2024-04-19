@@ -90,8 +90,6 @@ class LevelD(LevelN):
         # Add the node to the DHT.
         for ip in node_ip_addresses:
             ip = IPv4Address(bytes.fromhex(ip))
-            if ip == my_address():
-                continue
             logging.debug(f"Joining network at {ip}...")
             if self._level0.join(ip): break
 
