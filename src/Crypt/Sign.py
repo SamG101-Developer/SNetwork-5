@@ -32,6 +32,8 @@ class Signer:
     def sign(my_static_private_key: SecKey, message: Bytes, their_id: Bytes) -> Bytes:
         # Add the hashed id to the message, hash it, and sign it.
         message += Hasher.hash(their_id, SHA3_224())
+        print(message[-SHA3_224.digest_size:])
+
         signature = my_static_private_key.sign(
             data=message,
             padding=PSS(MGF1(SHA3_224()), PSS.MAX_LENGTH),
