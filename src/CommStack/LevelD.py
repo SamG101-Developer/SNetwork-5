@@ -25,6 +25,8 @@ class LevelD(LevelN):
     _level0: Level0
 
     def __init__(self, level0: Level0):
+        super().__init__()
+
         self._level0 = level0
 
         # Start listening for incoming connections and bootstrap the network.

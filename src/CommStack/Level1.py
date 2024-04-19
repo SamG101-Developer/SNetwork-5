@@ -45,9 +45,7 @@ class Level1(LevelN):
     _this_static_secret_key: SecKey
 
     def __init__(self, level0: Level0) -> None:
-        # Create the insecure and secure sockets.
-        self._socket = Socket(AF_INET, SOCK_DGRAM)
-        self._socket_sec = Socket(AF_INET, SOCK_DGRAM)
+        super().__init__()
 
         # Store the DHT node and conversation state.
         self._level0 = level0

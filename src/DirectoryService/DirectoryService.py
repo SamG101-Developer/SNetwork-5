@@ -14,8 +14,8 @@ class DirectoryService(LevelN):
     _cache: List[IPv4Address]
 
     def __init__(self) -> None:
+        super().__init__()
         logging.debug("Launching directory service")
-        self._socket = Socket(AF_INET, SOCK_DGRAM)
         Thread(target=self._listen).start()
 
     def _listen(self) -> None:

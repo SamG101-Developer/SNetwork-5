@@ -79,6 +79,8 @@ class Level2(LevelN):
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]
 
     def __init__(self, level1: Level1):
+        super().__init__()
+
         self._level1 = level1
         self._route = None
 

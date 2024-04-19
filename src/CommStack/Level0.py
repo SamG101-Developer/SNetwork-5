@@ -67,6 +67,8 @@ class Level0(LevelN):
     _directory: Str
 
     def __init__(self):
+        super().__init__()
+
         # General attributes.
         this_node = my_address()
         self._state = Level0State.Stop
@@ -81,7 +83,6 @@ class Level0(LevelN):
         self._heartbeat_interval = 0.5
         self._prev_node_pings = AtomicInt(0)
         self._next_node_pings = AtomicInt(0)
-        self._socket = Socket(AF_INET, SOCK_DGRAM)
 
         # File oriented attributes.
         self._files = []

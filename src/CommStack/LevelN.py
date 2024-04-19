@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from ipaddress import IPv4Address
-from socket import socket as Socket
+from socket import socket as Socket, AF_INET, SOCK_DGRAM
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -28,6 +28,9 @@ class LevelNProtocol:
 
 class LevelN(ABC):
     _socket: Socket
+
+    def __init__(self):
+        self._socket = Socket(AF_INET, SOCK_DGRAM)
 
     @abstractmethod
     def _listen(self) -> None:
