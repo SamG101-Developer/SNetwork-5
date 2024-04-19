@@ -228,6 +228,7 @@ class Level0(LevelN):
             try:
                 data, address = self._socket.recvfrom(4096)
                 data = pickle.loads(data)
+                logging.debug(f"Received {data} from {address}")
                 Thread(target=self._handle_command, args=(IPv4Address(address[0]), data)).start()
             except ConnectionResetError:
                 break
