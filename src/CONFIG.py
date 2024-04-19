@@ -1,0 +1,9 @@
+from ipaddress import IPv6Address
+
+
+LEVEL_0_PORT = 40_000
+LEVEL_1_PORT = 40_001
+LEVEL_2_PORT = 40_002
+LEVEL_D_PORT = 40_003
+
+DIRECTORY_IP = IPv6Address("fe80::399:3723:1f1:ea97")
