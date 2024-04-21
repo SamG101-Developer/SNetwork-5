@@ -10,14 +10,18 @@ from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP, LEVEL_0_PORT
 class Level0:
     _log: logging.Logger
     _server: Server
+    _loop: asyncio.AbstractEventLoop
 
     def __init__(self):
         self._log = logging.getLogger("kademlia")
         self._log.setLevel(logging.DEBUG)
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
         self.join()
 
     def join(self) -> None:
-        asyncio.run(self._run())
+        self._loop.run_until_complete(self._run())
 
     async def _run(self) -> None:
         self._server = Server()
@@ -25,14 +29,12 @@ class Level0:
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
     def put(self, file_name: str, file_contents: bytes) -> None:
-        loop = asyncio.get_event_loop()
         task = self._server.set(file_name, file_contents)
-        loop.run_until_complete(task)
+        self._loop.run_until_complete(task)
 
     def get(self, file_name: str) -> bytes:
-        loop = asyncio.get_event_loop()
         task = self._server.get(file_name)
-        contents = loop.run_until_complete(task)
+        contents = self._loop.run_until_complete(task)
         open(f"_store/{file_name}", "wb").write(contents)
         return contents
 
