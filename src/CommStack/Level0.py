@@ -1,4 +1,5 @@
 import asyncio, logging
+import random
 
 from src.kademlia.network import Server
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP
@@ -11,6 +12,8 @@ class Level0:
     def __init__(self):
         self._log = logging.getLogger("kademlia")
         self._log.setLevel(logging.DEBUG)
+
+    def join(self) -> None:
         asyncio.run(self._run())
 
     async def _run(self) -> None:
@@ -26,3 +29,16 @@ class Level0:
 
     async def get(self, file_name: str) -> bytes:
         return await self._server.get(file_name)
+
+    def leave(self) -> None:
+        self._server.stop()
+
+    def get_random_node(self):
+        nodes = self._server.protocol.router.buckets.flat()
+        random_node = random.choice(nodes)
+        print(f"{random_node}")
+        return random_node
+
+    @property
+    def node_id(self):
+        return self._server.node.long_id

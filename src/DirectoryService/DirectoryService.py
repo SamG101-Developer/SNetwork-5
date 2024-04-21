@@ -69,7 +69,7 @@ class DirectoryService(LevelN):
         return LEVEL_D_PORT
 
     def _host_dht(self) -> None:
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.new_event_loop()
         self._loop.set_debug(True)
         self._dht_server = Server()
         self._loop.run_until_complete(self._dht_server.listen(LEVEL_D_PORT))

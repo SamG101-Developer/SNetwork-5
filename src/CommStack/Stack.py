@@ -1,15 +1,17 @@
+from threading import Thread
+
 from src.CommStack.Level0 import Level0
 from src.CommStack.Level1 import Level1
 from src.CommStack.Level2 import Level2
 from src.CommStack.LevelD import LevelD
-from threading import Thread
+from src.Utils.Types import Optional
 
 
 class Stack:
-    level0: Level0
-    level1: Level1
-    level2: Level2
-    levelD: LevelD
+    level0: Optional[Level0]
+    level1: Optional[Level1]
+    level2: Optional[Level2]
+    levelD: Optional[LevelD]
 
     def __init__(self):
         self.level0 = self.level1 = self.level2 = self.levelD = None

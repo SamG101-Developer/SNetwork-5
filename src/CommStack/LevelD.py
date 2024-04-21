@@ -80,26 +80,13 @@ class LevelD(LevelN):
     def _handle_bootstrap(self, request: Json) -> None:
         # Get this node's identifier.
         this_identifier = Hasher.hash(PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes, SHA3_256())
-
-        # Popup message if there are currently no nodes in the network.
-        node_ip_addresses = request["ips"]
-        if not node_ip_addresses:
-            logging.error("No nodes in the network.")
-            return
-
-        # Add the node to the DHT.
-        for ip in node_ip_addresses:
-            ip = IPv4Address(bytes.fromhex(ip))
-            logging.debug(f"Joining network at {ip}...")
-            if self._level0.join(ip): break
         logging.debug("Joined network.")
 
         # Place node info on the DHT.
-        info = {
+        key = f"{self._level0.node_key}.key"
+        val = {
             "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes.hex(),
             "ip": my_address().exploded,
             "id": this_identifier.hex()
         }
-        key_file = f"_crypt/{this_identifier.hex()}.key"
-        json.dump(info, open(key_file, "w"))
-        self._level0.put(key_file)
+        self._level0.put(key, json.dumps(val).encode())
