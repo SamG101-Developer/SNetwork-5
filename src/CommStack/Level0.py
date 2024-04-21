@@ -22,11 +22,13 @@ class Level0:
         await self._server.listen(40_000)
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
-    async def put(self, file_name: str, file_contents: bytes) -> None:
-        await self._server.set(file_name, file_contents)
+    def put(self, file_name: str, file_contents: bytes) -> None:
+        task = self._server.set(file_name, file_contents)
+        asyncio.run(task)
 
-    async def get(self, file_name: str) -> bytes:
-        contents = await self._server.get(file_name)
+    def get(self, file_name: str) -> bytes:
+        task = self._server.get(file_name)
+        contents = asyncio.run(task)
         open(f"_store/{file_name}", "wb").write(contents)
         return contents
 
