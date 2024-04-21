@@ -33,7 +33,8 @@ class Level0:
         return await self._server.get(file_name)
 
     def leave(self) -> None:
-        self._server.stop()
+        try: self._server.stop()
+        except RuntimeError: pass
 
     def get_random_node(self):
         nodes = self._server.protocol.router.buckets.flat()
