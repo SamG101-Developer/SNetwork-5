@@ -1,6 +1,6 @@
 import asyncio, logging
 
-from src.kademlia.kademlia.network import Server
+from src.kademlia.network import Server
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP
 
 
