@@ -5,19 +5,19 @@ import asyncio, json, logging, random
 from src.kademlia.network import Server
 from src.CommStack.LevelN import LevelN
 from src.CommStack.LevelD import LevelDProtocol
-from src.Utils.Types import Json, Int, List
+from src.Utils.Types import Json, Int, Dict
 from src.CONFIG import LEVEL_D_PORT, LEVEL_0_PORT
 
 
 class DirectoryService(LevelN):
-    _cache: List[IPv4Address]
+    _cache: Dict[IPv4Address, Int]
     _log: logging.Logger
     _loop: asyncio.AbstractEventLoop
     _dht_server: Server
 
     def __init__(self) -> None:
         super().__init__()
-        self._cache = []
+        self._cache = {}
         logging.debug("Launching directory service")
         Thread(target=self._listen).start()
         Thread(target=self._host_dht).start()
@@ -39,29 +39,26 @@ class DirectoryService(LevelN):
                 self._handle_join_network(address, request)
             case 14:
                 logging.debug(f"Handling leave network request from {address}")
-                self._cache.remove(address)
+                self._cache.pop(address)
 
     def _send(self, address: IPv4Address, data: Json) -> None:
         encoded_data = json.dumps(data).encode()
         self._socket.sendto(encoded_data, (address.exploded, self._port))
 
     def _handle_join_network(self, address: IPv4Address, request: Json) -> None:
-        # Generate subset of random ids that should be online.
         logging.debug(f"Handling join network request from {address}")
-        cache = self._cache.copy()
-        cache = [c for c in cache if c.packed != address.packed]
+        self._cache[address] = request["dht_node_id"]
 
-        ip_address_subset = random.sample(self._cache, k=min(3, len(self._cache)))
-        ip_address_subset = [ip.packed.hex() for ip in ip_address_subset]
-        self._cache.append(address)
+    def _handle_get_random_nodes(self, address: IPv4Address, request: Json) -> None:
+        blocklist = request["blocklist"]
+        blocklist.append(self._dht_server.node.long_id)
+        filtered_cache = {k: v for k, v in self._cache.items() if v not in blocklist}
 
-        # Send response
+        random_nodes = random.sample(list(filtered_cache.keys()), k=4)
         response = {
-            "command": LevelDProtocol.Bootstrap.value,
-            "ips": ip_address_subset
+            "command": 7,
+            "nodes": random_nodes
         }
-
-        # Todo: sign this
         self._send(address, response)
 
     @property

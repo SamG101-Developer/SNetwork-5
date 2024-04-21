@@ -24,11 +24,9 @@ import logging, json, os
 from src.CommStack.Level1 import Level1, Level1Protocol
 from src.CommStack.LevelN import LevelN, LevelNProtocol, Connection
 from src.Crypt.AsymmetricKeys import PubKey, SecKey
-from src.Crypt.KeyManager import KeyManager
 from src.Crypt.KEM import KEM
 from src.Crypt.Sign import Signer
 from src.Crypt.Symmetric import SymmetricEncryption
-from src.Utils.Address import my_address
 from src.Utils.Types import Bytes, Dict, Int, Json, List, Optional
 from src.CONFIG import LEVEL_2_PORT
 
@@ -41,6 +39,8 @@ class Level2Protocol(LevelNProtocol, Enum):
     KEMWrappedMasterKey = 4
     SignHashMasterKey = 5
     Forward = 6
+    GetRandomNodes = 7
+    RandomNodes = 8
 
 
 class Level2State(Enum):
@@ -78,6 +78,7 @@ class Level2(LevelN):
     _route_forward_token_map: Dict[Bytes, Bytes]
     _route_backward_token_map: Dict[Bytes, Bytes]
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]
+    _temp_random_nodes: List[Int]
 
     def __init__(self, level1: Level1):
         super().__init__()
@@ -88,6 +89,7 @@ class Level2(LevelN):
         self._route_forward_token_map = {}
         self._route_backward_token_map = {}
         self._tunnel_keys = {}
+        self._temp_random_nodes = []
 
         Thread(target=self._listen).start()
 
@@ -135,6 +137,8 @@ class Level2(LevelN):
                 self._handle_get_ephemeral_pub_key_for_kem(address, token, request)
             case Level2Protocol.KEMWrappedMasterKey.value:
                 self._handle_kem_wrapped_master_key(address, token, request)
+            case Level2Protocol.RandomNodes.value:
+                self._temp_random_nodes = request["nodes"].copy()
 
     def _send(self, connection: Connection, data: Json) -> None:
         # Check the connection is valid.
@@ -156,9 +160,19 @@ class Level2(LevelN):
         # Create a new route.
         self._route = Route(token=os.urandom(32), nodes=[])
 
+        request = {
+            "command": Level2Protocol.GetRandomNodes.value,
+            "blocklist": [self._level1._level0.node_key]
+        }
+        while not self._temp_random_nodes:
+            pass
+        temp_random_nodes = self._temp_random_nodes.copy()
+        self._temp_random_nodes.clear()
+        iterator = iter(temp_random_nodes)
+
         # Extend the route to 3 more nodes.
         while len(self._route.nodes) < 4:
-            next_node = self._level1._level0.get_random_node(exclude_list=[node.identifier for node in self._route.nodes] + [my_address()])
+            next_node = json.loads(self._level1._level0.get(f"{next(iterator)}.key"))
             next_node = RouteNode(address=IPv4Address(next_node["ip"]), identifier=bytes.fromhex(next_node["id"]), public_key=None, e2e_master_key=None)
             request = {
                 "command": Level2Protocol.ExtendRoute.value,

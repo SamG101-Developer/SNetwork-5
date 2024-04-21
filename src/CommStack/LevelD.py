@@ -48,7 +48,8 @@ class LevelD(LevelN):
 
         # Join the network by sending a request to the directory node.
         request = {
-            "command": LevelDProtocol.JoinNetwork.value}
+            "command": LevelDProtocol.JoinNetwork.value,
+            "dht_node_id": self._level0.node_key}
 
         # Send the request to the directory node.
         self._send(DIRECTORY_IP, request)
