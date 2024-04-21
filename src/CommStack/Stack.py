@@ -4,7 +4,7 @@ from src.CommStack.Level0 import Level0
 from src.CommStack.Level1 import Level1
 from src.CommStack.Level2 import Level2
 from src.CommStack.LevelD import LevelD
-from src.Utils.Types import Optional
+from src.Utils.Types import Optional, Str, Bytes
 
 
 class Stack:
@@ -39,9 +39,9 @@ class Stack:
         while not self.level2: pass
         self.level2.create_route()
 
-    def store_file(self, file_directory) -> None:
+    def store_file(self, file_directory: Str, file_contents: Bytes) -> None:
         while not self.level0: pass
-        self.level0.put(file_directory)
+        self.level0.put(file_directory, file_contents)
 
     def retrieve_file(self, file_name) -> None:
         while not self.level0: pass
