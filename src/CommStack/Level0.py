@@ -46,9 +46,11 @@ class Level0:
         nodes = random.choice(self._server.protocol.router.buckets).get_nodes()
         random_node = random.choice(nodes)
         random_node_info = self.get(f"{random_node}.key")
+
         while bytes.fromhex(json.loads(random_node_info)["id"]) in exclude_list:
             random_node = random.choice(nodes)
             random_node_info = self.get(f"{random_node}.key")
+
         print(f"{random_node}")
         return random_node
 

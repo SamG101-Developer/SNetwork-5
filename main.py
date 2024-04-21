@@ -1,7 +1,11 @@
 from PyQt6.QtWidgets import QApplication
 import logging, os, sys
+import nest_asyncio
 
 from src.Gui.MainWindow import MainWindow
+
+
+nest_asyncio.apply()
 
 
 def custom_excepthook(type, value, traceback) -> None:
