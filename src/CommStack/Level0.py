@@ -22,12 +22,8 @@ class Level0:
         await self._server.listen(40_000)
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
-    def __del__(self):
-        try: self._server.stop()
-        except RuntimeError: pass
-
-    def put(self, file_name: str, file_contents: bytes) -> None:
-        self._server.set(file_name, file_contents)
+    async def put(self, file_name: str, file_contents: bytes) -> None:
+        await self._server.set(file_name, file_contents)
 
     async def get(self, file_name: str) -> bytes:
         return await self._server.get(file_name)
@@ -45,3 +41,7 @@ class Level0:
     @property
     def node_key(self):
         return self._server.node.long_id
+
+    def __del__(self):
+        try: self._server.stop()
+        except RuntimeError: pass
