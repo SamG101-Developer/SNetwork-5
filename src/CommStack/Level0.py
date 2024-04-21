@@ -52,12 +52,12 @@ class Level0:
 
         print("NODES: ", nodes)
         random_node = random.choice(nodes)
-        random_node_info = self.get(f"{random_node}.key")
+        random_node_info = self.get(f"{random_node.long_id}.key")
 
         # Get a node not in the blocklist.
         while bytes.fromhex(json.loads(random_node_info)["id"]) in exclude_list:
             random_node = random.choice(nodes)
-            random_node_info = self.get(f"{random_node}.key")
+            random_node_info = self.get(f"{random_node.long_id}.key")
 
         print(f"NODE: {random_node}")
         return random_node
