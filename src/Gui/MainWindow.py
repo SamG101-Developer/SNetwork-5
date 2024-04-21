@@ -74,6 +74,8 @@ class MainWindow(QWidget):
         self._join_button._activated = True
         self._join_button.setDisabled(True)
         self._route_button.setDisabled(False)
+        self._store_button.setDisabled(False)
+        self._retrieve_button.setDisabled(False)
 
         self._stack = Stack()
 
@@ -81,9 +83,7 @@ class MainWindow(QWidget):
         # Button states
         self._route_button._activated = True
         self._route_button.setDisabled(True)
-        self._store_button.setDisabled(False)
         self._host_hidden_service_button.setDisabled(False)
-        self._retrieve_button.setDisabled(False)
 
         self._stack.handle_create_route()
 
