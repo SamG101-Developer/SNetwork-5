@@ -90,7 +90,9 @@ class MainWindow(QWidget):
     def store(self) -> None:
         open_file_dialog = QFileDialog(self)
         file_directory, _ = open_file_dialog.getOpenFileName(self, "Open File", "", "All Files (*)")
-        file_directory and self._stack.store_file(file_directory)
+        if file_directory:
+            file_contents = open(file_directory, "rb").read()
+            self._stack.store_file(file_directory, file_contents)
 
     def retrieve(self) -> None:
         file_name, _ = QInputDialog.getText(self, "Retrieve File", "Enter the name of the file to retrieve:")
