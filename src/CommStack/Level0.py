@@ -23,7 +23,8 @@ class Level0:
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
     def __del__(self):
-        self._server.stop()
+        try: self._server.stop()
+        except RuntimeError: pass
 
     def put(self, file_name: str, file_contents: bytes) -> None:
         self._server.set(file_name, file_contents)
