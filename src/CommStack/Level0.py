@@ -42,5 +42,5 @@ class Level0:
         return random_node
 
     @property
-    def node_id(self):
+    def node_key(self):
         return self._server.node.long_id
