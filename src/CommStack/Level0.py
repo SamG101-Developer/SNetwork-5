@@ -43,15 +43,21 @@ class Level0:
         except RuntimeError: pass
 
     def get_random_node(self, exclude_list: List[Bytes]):
-        nodes = random.choice(self._server.protocol.router.buckets).get_nodes()
+        buckets = self._server.protocol.router.buckets
+        nodes = []
+        for bucket in buckets:
+            nodes += bucket.get_nodes()
+
+        print("NODES: ", nodes)
         random_node = random.choice(nodes)
         random_node_info = self.get(f"{random_node}.key")
 
+        # Get a node not in the blocklist.
         while bytes.fromhex(json.loads(random_node_info)["id"]) in exclude_list:
             random_node = random.choice(nodes)
             random_node_info = self.get(f"{random_node}.key")
 
-        print(f"{random_node}")
+        print(f"NODE: {random_node}")
         return random_node
 
     @property
