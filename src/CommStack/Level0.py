@@ -43,7 +43,7 @@ class Level0:
         except RuntimeError: pass
 
     def get_random_node(self, exclude_list: List[Bytes]):
-        nodes = self._server.protocol.router.buckets.flat()
+        nodes = self._server.protocol.router.buckets
         random_node = random.choice(nodes)
         while bytes.fromhex(json.loads(random_node)["id"]) in exclude_list:
             random_node = random.choice(nodes)
