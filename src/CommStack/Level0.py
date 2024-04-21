@@ -25,12 +25,14 @@ class Level0:
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
     def put(self, file_name: str, file_contents: bytes) -> None:
+        loop = asyncio.get_event_loop()
         task = self._server.set(file_name, file_contents)
-        asyncio.run(task)
+        loop.run_until_complete(task)
 
     def get(self, file_name: str) -> bytes:
+        loop = asyncio.get_event_loop()
         task = self._server.get(file_name)
-        contents = asyncio.create_task(task).result()
+        contents = loop.run_until_complete(task)
         open(f"_store/{file_name}", "wb").write(contents)
         return contents
 
