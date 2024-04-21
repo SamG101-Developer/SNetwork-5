@@ -26,7 +26,9 @@ class Level0:
         await self._server.set(file_name, file_contents)
 
     async def get(self, file_name: str) -> bytes:
-        return await self._server.get(file_name)
+        contents = await self._server.get(file_name)
+        open(f"_store/{file_name}", "wb").write(contents)
+        return contents
 
     def leave(self) -> None:
         try: self._server.stop()
