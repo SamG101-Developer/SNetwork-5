@@ -4,9 +4,9 @@ import logging
 
 from rpcudp.protocol import RPCProtocol
 
-from kademlia.node import Node
-from kademlia.routing import RoutingTable
-from kademlia.utils import digest
+from src.kademlia.node import Node
+from src.kademlia.routing import RoutingTable
+from src.kademlia.utils import digest
 
 log = logging.getLogger(__name__)  # pylint: disable=invalid-name
 

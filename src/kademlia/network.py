@@ -6,12 +6,12 @@ import pickle
 import asyncio
 import logging
 
-from kademlia.protocol import KademliaProtocol
-from kademlia.utils import digest
-from kademlia.storage import ForgetfulStorage
-from kademlia.node import Node
-from kademlia.crawling import ValueSpiderCrawl
-from kademlia.crawling import NodeSpiderCrawl
+from src.kademlia.protocol import KademliaProtocol
+from src.kademlia.utils import digest
+from src.kademlia.storage import ForgetfulStorage
+from src.kademlia.node import Node
+from src.kademlia.crawling import ValueSpiderCrawl
+from src.kademlia.crawling import NodeSpiderCrawl
 
 log = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
