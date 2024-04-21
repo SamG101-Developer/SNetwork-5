@@ -1,6 +1,6 @@
 from ipaddress import IPv4Address
 from threading import Thread
-from kademlia.network import Server
+from kademlia.kademlia.network import Server
 import asyncio, json, logging, random
 
 from src.CommStack.LevelN import LevelN
