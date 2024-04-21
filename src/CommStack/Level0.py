@@ -44,8 +44,14 @@ class Level0:
         try: self._server.stop()
         except RuntimeError: pass
 
+    def get_all_nodes(self):
+        routing_table = self._server.protocol.router
+        buckets = routing_table.buckets
+        print("NODES: ", [node.long_id for bucket in buckets for node in bucket.get_nodes()])
+        return buckets
+
     def get_random_node(self, exclude_list: List[Bytes]):
-        buckets = self._server.protocol.router.buckets
+        buckets = self.get_all_nodes()
         nodes = []
         for bucket in buckets:
             nodes += bucket.get_nodes()
