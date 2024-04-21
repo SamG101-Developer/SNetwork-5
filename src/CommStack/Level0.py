@@ -29,6 +29,7 @@ class Level0:
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
     def put(self, file_name: str, file_contents: bytes) -> None:
+        print(f"PUTTING FILE {file_name} ({file_contents})")
         task = self._server.set(file_name, file_contents)
         self._loop.run_until_complete(task)
 
