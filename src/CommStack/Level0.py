@@ -34,6 +34,7 @@ class Level0:
         self._loop.run_until_complete(task)
 
     def get(self, file_name: str) -> bytes:
+        print(f"GETTING FILE {file_name}")
         task = self._server.get(file_name)
         contents = self._loop.run_until_complete(task)
         open(f"_store/{file_name}", "wb").write(contents)
