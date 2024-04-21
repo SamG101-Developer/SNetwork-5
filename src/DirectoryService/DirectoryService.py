@@ -1,6 +1,7 @@
 from ipaddress import IPv4Address
 from threading import Thread
-import json, logging, random
+from kademlia.network import Server
+import asyncio, json, logging, random
 
 from src.CommStack.LevelN import LevelN
 from src.CommStack.LevelD import LevelDProtocol
@@ -10,12 +11,16 @@ from src.CONFIG import LEVEL_D_PORT
 
 class DirectoryService(LevelN):
     _cache: List[IPv4Address]
+    _log: logging.Logger
+    _loop: asyncio.AbstractEventLoop
+    _dht_server: Server
 
     def __init__(self) -> None:
         super().__init__()
         self._cache = []
         logging.debug("Launching directory service")
         Thread(target=self._listen).start()
+        Thread(target=self._host_dht).start()
 
     def _listen(self) -> None:
         self._socket.bind(("", self._port))
@@ -62,3 +67,21 @@ class DirectoryService(LevelN):
     @property
     def _port(self) -> Int:
         return LEVEL_D_PORT
+
+    def _host_dht(self) -> None:
+        self._loop = asyncio.get_event_loop()
+        self._loop.set_debug(True)
+        self._dht_server = Server()
+        self._loop.run_until_complete(self._dht_server.listen(LEVEL_D_PORT))
+
+        try:
+            self._loop.run_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self._dht_server.stop()
+            self._loop.close()
+
+    def __del__(self):
+        self._dht_server.stop()
+        self._loop.close()
