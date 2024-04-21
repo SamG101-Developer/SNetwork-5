@@ -2,7 +2,7 @@ import asyncio, logging
 import random
 
 from src.kademlia.network import Server
-from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP
+from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP, LEVEL_0_PORT
 
 
 class Level0:
@@ -19,7 +19,7 @@ class Level0:
     async def _run(self) -> None:
         self._server = Server()
         await self._server.listen(40_000)
-        await self._server.bootstrap([(DIRECTORY_IP, LEVEL_D_PORT)])
+        await self._server.bootstrap([(DIRECTORY_IP, LEVEL_0_PORT)])
 
     def __del__(self):
         self._server.stop()

@@ -6,7 +6,7 @@ from src.kademlia.network import Server
 from src.CommStack.LevelN import LevelN
 from src.CommStack.LevelD import LevelDProtocol
 from src.Utils.Types import Json, Int, List
-from src.CONFIG import LEVEL_D_PORT
+from src.CONFIG import LEVEL_D_PORT, LEVEL_0_PORT
 
 
 class DirectoryService(LevelN):
@@ -72,7 +72,7 @@ class DirectoryService(LevelN):
         self._loop = asyncio.new_event_loop()
         self._loop.set_debug(True)
         self._dht_server = Server()
-        self._loop.run_until_complete(self._dht_server.listen(LEVEL_D_PORT))
+        self._loop.run_until_complete(self._dht_server.listen(LEVEL_0_PORT))
 
         try:
             self._loop.run_forever()
