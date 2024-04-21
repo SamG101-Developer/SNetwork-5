@@ -1,6 +1,8 @@
 import asyncio, logging
+import json
 import random
 
+from Utils.Types import List, Bytes
 from src.kademlia.network import Server
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP, LEVEL_0_PORT
 
@@ -28,7 +30,7 @@ class Level0:
 
     def get(self, file_name: str) -> bytes:
         task = self._server.get(file_name)
-        contents = asyncio.run(task)
+        contents = asyncio.create_task(task).result()
         open(f"_store/{file_name}", "wb").write(contents)
         return contents
 
@@ -36,9 +38,11 @@ class Level0:
         try: self._server.stop()
         except RuntimeError: pass
 
-    def get_random_node(self):
+    def get_random_node(self, exclude_list: List[Bytes]):
         nodes = self._server.protocol.router.buckets.flat()
         random_node = random.choice(nodes)
+        while bytes.fromhex(json.loads(random_node)["id"]) in exclude_list:
+            random_node = random.choice(nodes)
         print(f"{random_node}")
         return random_node
 
