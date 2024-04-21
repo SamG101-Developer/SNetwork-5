@@ -12,6 +12,7 @@ class Level0:
     def __init__(self):
         self._log = logging.getLogger("kademlia")
         self._log.setLevel(logging.DEBUG)
+        self.join()
 
     def join(self) -> None:
         asyncio.run(self._run())
