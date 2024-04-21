@@ -2,7 +2,7 @@ import asyncio, logging
 import json
 import random
 
-from Utils.Types import List, Bytes
+from src.Utils.Types import List, Bytes
 from src.kademlia.network import Server
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP, LEVEL_0_PORT
 
