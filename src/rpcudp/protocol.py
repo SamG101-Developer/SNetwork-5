@@ -8,8 +8,7 @@ from base64 import b64encode
 from hashlib import sha1
 
 from src import umsgpack
-
-from rpcudp.exceptions import MalformedMessage
+from src.rpcudp.exceptions import MalformedMessage
 
 LOG = logging.getLogger(__name__)
 
