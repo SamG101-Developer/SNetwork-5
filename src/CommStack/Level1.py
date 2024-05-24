@@ -2,10 +2,6 @@
 The Level1 layer of the stack is used to establish connections between nodes on the network. It operates over an
 insecure socket. Once the secure connection is established, the secure socket (with e2e encryption) is used to send and
 receive data. This is done in Layer2.
-
-Whilst the insecure socket has no e2e encryption, and doesn't need it as no confidential data is exchanged on this
-socket, as a precaution, static public keys are used to encrypt data in transit. This is not vulnerable to MITM, as
-important data is also signed inside the encrypted payload.
 """
 
 from __future__ import annotations
@@ -27,12 +23,12 @@ from src.CONFIG import LEVEL_1_PORT
 
 
 class Level1Protocol(LevelNProtocol, Enum):
-    RequestConnection = 0
-    SignatureChallenge = 1
-    ChallengeResponse = 2
-    AcceptConnection = 3
-    RejectConnection = 4
-    CloseConnection = 5
+    RequestConnection  = 0x00
+    SignatureChallenge = 0x01
+    ChallengeResponse  = 0x02
+    AcceptConnection   = 0x03
+    RejectConnection   = 0x04
+    CloseConnection    = 0x05
 
 
 class Level1(LevelN):
@@ -75,6 +71,7 @@ class Level1(LevelN):
     def _handle_command(self, address: IPv4Address, request: Json) -> None:
         # Check the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
+            logging.error(f"Invalid request: {request}")
             return
         token = bytes.fromhex(request["token"])
 
@@ -103,6 +100,7 @@ class Level1(LevelN):
 
     @property
     def _port(self) -> Int:
+        # Get the port from the configuration.
         return LEVEL_1_PORT
 
     def connect(self, address: IPv4Address, that_identifier: Bytes, token: Bytes = b"") -> Optional[Connection]:
@@ -112,15 +110,15 @@ class Level1(LevelN):
 
         # Prepare static and ephemeral keys.
         this_ephemeral_key_pair = KEM.generate_key_pair()
-        this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes)
-        logging.debug(f"This ephemeral public key: {this_ephemeral_key_pair.public_key.bytes.hex()}")
+        this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.der)
+        logging.debug(f"This ephemeral public key: {this_ephemeral_key_pair.public_key.der.hex()}")
 
         # Create the handshake request.
         request = {
             "command": Level1Protocol.RequestConnection.value,
             "token": token.hex(),
             "identifier": self._this_identifier.hex(),
-            "ephemeral_public_key": this_ephemeral_key_pair.public_key.bytes.hex(),
+            "ephemeral_public_key": this_ephemeral_key_pair.public_key.der.hex(),
             "ephemeral_public_key_signature": this_ephemeral_public_key_signed.hex()}
 
         # Send the request and store the conversation state.
@@ -138,16 +136,16 @@ class Level1(LevelN):
 
         # Get the identifier and key information, and get the certificate from the DHT.
         that_identifier = bytes.fromhex(request["identifier"])
-        that_ephemeral_public_key = PubKey.from_bytes(bytes.fromhex(request["ephemeral_public_key"]))
+        that_ephemeral_public_key = PubKey.from_der(bytes.fromhex(request["ephemeral_public_key"]))
         that_ephemeral_public_key_signature = bytes.fromhex(request["ephemeral_public_key_signature"])
-        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
-        logging.debug(f"Their ephemeral public key: {that_ephemeral_public_key.bytes.hex()}")
+        that_static_public_key = PubKey.from_der(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
+        logging.debug(f"Their ephemeral public key: {that_ephemeral_public_key.der.hex()}")
 
         # Create the connection
         connection = Connection(address, that_identifier, bytes.fromhex(request["token"]), Level1Protocol.SignatureChallenge, None, that_ephemeral_public_key, None, None)
 
         # Verify the signed ephemeral public key, and reject the connection if there's an invalid signature.
-        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.bytes, that_ephemeral_public_key_signature):
+        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.der, that_ephemeral_public_key_signature):
             response = {
                 "command": Level1Protocol.RejectConnection.value,
                 "token": request["token"],
@@ -175,7 +173,7 @@ class Level1(LevelN):
         # Get the conversation state and the challenge response.
         token = bytes.fromhex(request["token"])
         connection = self._conversations[token]
-        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{connection.identifier.hex()}.key"))["pub_key"]))
+        that_static_public_key = PubKey.from_der(bytes.fromhex(json.loads(self._level0.get(f"{connection.identifier.hex()}.key"))["pub_key"]))
 
         # Verify the challenge received from the accepting node.
         signed_challenge = bytes.fromhex(request["challenge_signature"])
@@ -224,7 +222,7 @@ class Level1(LevelN):
 
         # Prepare static keys.
         that_identifier = connection.identifier
-        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
+        that_static_public_key = PubKey.from_der(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the challenge response.
         challenge = connection.challenge
@@ -265,7 +263,7 @@ class Level1(LevelN):
 
         # Prepare static keys.
         that_identifier = connection.identifier
-        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
+        that_static_public_key = PubKey.from_der(bytes.fromhex(json.loads(self._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the signature on the kem wrapped master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_master_key"])

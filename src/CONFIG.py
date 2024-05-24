@@ -1,9 +1,13 @@
-from ipaddress import IPv4Address
+from ipaddress import IPv6Address
 
+LAYER_1_PORT = 40_001
+LAYER_2_PORT = 40_002
+LAYER_3_PORT = 40_003
+LAYER_4_PORT = 40_004
 
-LEVEL_0_PORT = 40_000
-LEVEL_1_PORT = 40_001
-LEVEL_2_PORT = 40_002
-LEVEL_D_PORT = 40_003
+DIRECTORY_IP = IPv6Address("fe80::7c7b:e49b:8cd:dc22")
+DEFAULT_IPV6 = "::"
 
-DIRECTORY_IP = IPv4Address("192.168.1.49")
+DHT_KEY_LENGTH = 32
+DHT_K_VALUE = 20
+DHT_ALPHA = 3

@@ -3,7 +3,6 @@ import json
 import random
 
 from src.Utils.Types import List, Bytes
-from src.kademlia.network import Server
 from src.CONFIG import LEVEL_D_PORT, DIRECTORY_IP, LEVEL_0_PORT
 
 
@@ -29,12 +28,10 @@ class Level0:
         await self._server.bootstrap([(DIRECTORY_IP.exploded, LEVEL_0_PORT)])
 
     def put(self, file_name: str, file_contents: bytes) -> None:
-        print(f"PUTTING FILE {file_name} ({file_contents})")
         task = self._server.set(file_name, file_contents)
         self._loop.run_until_complete(task)
 
     def get(self, file_name: str) -> bytes:
-        print(f"GETTING FILE {file_name}")
         task = self._server.get(file_name)
         contents = self._loop.run_until_complete(task)
         open(f"_store/{file_name}", "wb").write(contents)
@@ -47,7 +44,6 @@ class Level0:
     def get_all_nodes(self):
         routing_table = self._server.protocol.router
         buckets = routing_table.buckets
-        print("NODES: ", [node.long_id for bucket in buckets for node in bucket.get_nodes()])
         return buckets
 
     def get_random_node(self, exclude_list: List[Bytes]):
@@ -56,7 +52,6 @@ class Level0:
         for bucket in buckets:
             nodes += bucket.get_nodes()
 
-        print("NODES: ", nodes)
         random_node = random.choice(nodes)
         random_node_info = self.get(f"{random_node.long_id}.key")
 
@@ -65,7 +60,6 @@ class Level0:
             random_node = random.choice(nodes)
             random_node_info = self.get(f"{random_node.long_id}.key")
 
-        print(f"NODE: {random_node}")
         return random_node
 
     @property

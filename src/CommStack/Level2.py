@@ -162,8 +162,7 @@ class Level2(LevelN):
 
         request = {
             "command": Level2Protocol.GetRandomNodes.value,
-            "blocklist": [self._level1._level0.node_key]
-        }
+            "blocklist": [self._level1._level0.node_key]}
         while not self._temp_random_nodes:
             pass
         temp_random_nodes = self._temp_random_nodes.copy()
@@ -179,8 +178,7 @@ class Level2(LevelN):
                 "token": self._route.token.hex(),
                 "route_token": self._route.token.hex(),
                 "next_node_addr": next_node.address.exploded,
-                "next_node_id": next_node.identifier.hex()
-            }
+                "next_node_id": next_node.identifier.hex()}
 
             logging.debug(f"Extending route to {next_node.address}.")
 
@@ -192,8 +190,7 @@ class Level2(LevelN):
                 request = {
                     "command": Level2Protocol.GetEphemeralPubKeyForKEM.value,
                     "token": entry_connection.token.hex(),
-                    "route_token": request["route_token"]
-                }
+                    "route_token": request["route_token"]}
                 self._route.entry_token = entry_connection.token
                 self._send(entry_connection, request)
 
@@ -208,7 +205,7 @@ class Level2(LevelN):
                     break
 
     def _handle_extend_route(self, address: IPv4Address, token: Bytes, request: Json) -> None:
-        logging.log(f"Extending route to {request['next_node_addr']}.")
+        logging.debug(f"Extending route to {request['next_node_addr']}.")
 
         # Attempt a connection to the next node in the route.
         next_node_address = IPv4Address(request["next_node_addr"])
@@ -220,8 +217,7 @@ class Level2(LevelN):
             request = {
                 "command": Level2Protocol.GetEphemeralPubKeyForKEM.value,
                 "token": connection.token.hex(),
-                "route_token": request["route_token"]
-            }
+                "route_token": request["route_token"]}
             self._send(connection, request)
 
             # Map the tokens for route tunnelling.
@@ -232,8 +228,7 @@ class Level2(LevelN):
         else:
             response = {
                 "command": Level2Protocol.ExtendRouteReject.value,
-                "token": token.hex()
-            }
+                "token": token.hex()}
             route_token = bytes.fromhex(request["route_token"])
             self._tunnel_message_backward(token, route_token, response)
 
@@ -246,16 +241,15 @@ class Level2(LevelN):
 
         # Create an ephemeral key pair, and sign the public key with the static private key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
-        signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.bytes)
-        self._tunnel_keys[bytes.fromhex(request["route_token"])] = TunnelKeyGroup(ephemeral_secret_key=this_ephemeral_key_pair.secret_key.bytes, e2e_master_key=None)
+        signature = Signer.sign(self._level1._this_static_secret_key, this_ephemeral_key_pair.public_key.der)
+        self._tunnel_keys[bytes.fromhex(request["route_token"])] = TunnelKeyGroup(ephemeral_secret_key=this_ephemeral_key_pair.secret_key.der, e2e_master_key=None)
 
         # Send the public key and signature to the previous node, who'll tunnel to the client.
         response = {
             "command": Level2Protocol.ExtendRouteAccept.value,
             "token": token.hex(),
-            "ephemeral_pub_key": this_ephemeral_key_pair.public_key.bytes.hex(),
-            "signature": signature.hex()
-        }
+            "ephemeral_pub_key": this_ephemeral_key_pair.public_key.der.hex(),
+            "signature": signature.hex()}
 
         logging.debug(f"Sending ephemeral public key to {self._level1._conversations[token].address}.")
         self._send(self._level1._conversations[token], response)
@@ -265,7 +259,7 @@ class Level2(LevelN):
 
         # Determine the identifier and static key of the new node.
         that_identifier = self._route.nodes[-1].identifier
-        that_static_public_key = PubKey.from_bytes(bytes.fromhex(json.loads(self._level1._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
+        that_static_public_key = PubKey.from_der(bytes.fromhex(json.loads(self._level1._level0.get(f"{that_identifier.hex()}.key"))["pub_key"]))
 
         # Verify the signature, and add the ephemeral public key to the route.
         that_ephemeral_public_key = bytes.fromhex(request["ephemeral_pub_key"])
@@ -273,14 +267,14 @@ class Level2(LevelN):
 
         if Signer.verify(that_static_public_key, that_ephemeral_public_key, that_ephemeral_public_key_signed):
             self._route.nodes[-1].public_key = that_ephemeral_public_key
-            self._route.nodes[-1].e2e_master_key = os.urandom(32)
+            self._route.nodes[-1].e2e_primary_key = os.urandom(32)
             self._route.nodes[-1].state = Level2State.Accepted
         else:
             self._route.nodes[-1].state = Level2State.Rejected
             return
 
-        # KEM the master key, and tunnel the message to the node.
-        kem_wrapped_master_key = KEM.kem_wrap(PubKey.from_bytes(that_ephemeral_public_key), self._route.nodes[-1].e2e_master_key).encapsulated
+        # KEM the master-key, and tunnel the message to the node.
+        kem_wrapped_master_key = KEM.kem_wrap(PubKey.from_der(that_ephemeral_public_key), self._route.nodes[-1].e2e_primary_key).encapsulated
         response = {
             "command": Level2Protocol.KEMWrappedMasterKey.value,
             "token": token.hex(),
@@ -292,7 +286,7 @@ class Level2(LevelN):
         # Get the ephemeral public key for this route, and unwrap the master key.
         kem_wrapped_master_key = bytes.fromhex(request["kem_wrapped_master_key"])
         this_ephemeral_secret_key = self._tunnel_keys[bytes.fromhex(request["route_token"])].ephemeral_secret_key
-        e2e_master_key = KEM.kem_unwrap(SecKey.from_bytes(this_ephemeral_secret_key), kem_wrapped_master_key).decapsulated
+        e2e_master_key = KEM.kem_unwrap(SecKey.from_der(this_ephemeral_secret_key), kem_wrapped_master_key).decapsulated
 
         # Save the master key, and sign a hash of it.
         self._tunnel_keys[bytes.fromhex(request["route_token"])].e2e_master_key = e2e_master_key
@@ -302,8 +296,7 @@ class Level2(LevelN):
         response = {
             "command": Level2Protocol.SignHashMasterKey.value,
             "token": token.hex(),
-            "signed_master_key": signed_master_key.hex()
-        }
+            "signed_master_key": signed_master_key.hex()}
         route_token = bytes.fromhex(request["route_token"])
         self._tunnel_message_backward(token, route_token, response)
 
@@ -329,8 +322,7 @@ class Level2(LevelN):
             next_layer = {
                 "command": Level2Protocol.Forward.value,
                 "token": self._route_backward_token_map[token],
-                "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(request).encode()).hex()
-            }
+                "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(request).encode()).hex()}
 
             # Get the previous connection to forward data too.
             prev_token = self._route_backward_token_map[token]
@@ -345,8 +337,7 @@ class Level2(LevelN):
         message = {
             "command": Level2Protocol.Forward.value,
             "token": token,
-            "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(message).encode()).hex()
-        }
+            "message": SymmetricEncryption.encrypt(tunnel_key, json.dumps(message).encode()).hex()}
 
         # Send the message to the previous node in the route.
         connection = self._level1._conversations[token]
@@ -364,8 +355,7 @@ class Level2(LevelN):
             message = {
                 "command": Level2Protocol.Forward.value,
                 "token": self._route.entry_token,
-                "message": SymmetricEncryption.encrypt(self._tunnel_keys[route_token].e2e_master_key, json.dumps(message).encode()).hex()
-            }
+                "message": SymmetricEncryption.encrypt(self._tunnel_keys[route_token].e2e_master_key, json.dumps(message).encode()).hex()}
 
         # Send the message to the entry node.
         connection = self._level1._conversations[self._route.nodes[0].identifier]

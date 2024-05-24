@@ -40,10 +40,10 @@ class LevelD(LevelN):
         if not os.path.exists("_crypt/secret_key.pem"):
             logging.debug("Generating keys.")
             this_static_key_pair = Signer.generate_key_pair()
-            identifier = Hasher.hash(this_static_key_pair.public_key.bytes, SHA3_256())
+            identifier = Hasher.hash(this_static_key_pair.public_key.der, SHA3_256())
             open("_crypt/identifier.txt", "w").write(identifier.hex())
-            open("_crypt/public_key.pem", "w").write(this_static_key_pair.public_key.str)
-            open("_crypt/secret_key.pem", "w").write(this_static_key_pair.secret_key.str)
+            open("_crypt/public_key.pem", "w").write(this_static_key_pair.public_key.pem)
+            open("_crypt/secret_key.pem", "w").write(this_static_key_pair.secret_key.pem)
         logging.debug("Created keys, joining network.")
 
         # Join the network by sending a request to the directory node.
@@ -80,13 +80,13 @@ class LevelD(LevelN):
 
     def _handle_bootstrap(self, request: Json) -> None:
         # Get this node's identifier.
-        this_identifier = Hasher.hash(PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes, SHA3_256())
+        this_identifier = Hasher.hash(PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).der, SHA3_256())
         logging.debug("Joined network.")
 
         # Place node info on the DHT.
         key = f"{self._level0.node_key}.key"
         val = {
-            "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).bytes.hex(),
+            "pub_key": PubKey(load_pem_public_key(open("_crypt/public_key.pem").read().encode())).der.hex(),
             "ip": my_address().exploded,
             "id": this_identifier.hex()
         }
