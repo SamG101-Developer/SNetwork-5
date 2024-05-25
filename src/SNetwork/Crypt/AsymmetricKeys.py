@@ -1,14 +1,27 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from cryptography.hazmat.primitives.asymmetric.padding import AsymmetricPadding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey, RSAPrivateKey
 from cryptography.hazmat.primitives.hashes import HashAlgorithm
-
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PublicFormat, PrivateFormat
 from cryptography.hazmat.primitives.serialization import load_der_public_key, load_der_private_key
 from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
 
-from src.Utils.Types import Bytes, Str
+from SNetwork.Utils.Types import Bytes, Str
+
+
+@dataclass
+class KeyPair:
+    secret_key: SecKey
+    public_key: PubKey
+
+
+@dataclass
+class KEMKeyPair:
+    encapsulated: bytes
+    decapsulated: bytes
 
 
 class PubKey:
@@ -70,3 +83,6 @@ class SecKey:
 
     def decrypt(self, ciphertext: Bytes, padding: AsymmetricPadding) -> Bytes:
         return self._secret_key.decrypt(ciphertext, padding)
+
+
+__all__ = ["KeyPair", "KEMKeyPair", "PubKey", "SecKey"]

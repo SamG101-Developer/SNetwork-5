@@ -1,16 +1,21 @@
 import random
+import json
+import logging
+import lzma
+import operator
+import math
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
 from threading import Lock, Thread
-import glob, json, logging, lzma, operator, os.path, math, time
 
-from src.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from src.CommStack2.Layer4 import Layer4, Layer4Protocol
-from src.Crypt.Symmetric import SymmetricEncryption
-from src.Crypt.Hash import Hasher, SHA3_256
-from src.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float
-from src.CONFIG import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
+from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommStack2.Layer4 import Layer4, Layer4Protocol
+from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
+from SNetwork.Crypt.Symmetric import SymmetricEncryption
+from SNetwork.Crypt.Hash import Hasher, SHA3_256
+from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float
 
 
 type KBucket = List[Connection]

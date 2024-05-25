@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import os
+import logging, os
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
-import logging
 
-from src.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from src.CommStack2.Layer3 import Layer3, Layer3Protocol
-from src.CommStack2.Layer4 import Layer4, Layer4Protocol
-from src.Crypt.KEM import KEM
-from src.Crypt.Sign import Signer
-from src.Crypt.KeyPair import PubKey, SecKey
-from src.Utils.Types import Int, Json, Bytes, Dict, Optional, List
-from src.CONFIG import LAYER_2_PORT
+from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommStack2.Layer3 import Layer3
+from SNetwork.CommStack2.Layer4 import Layer4
+from SNetwork.Config import LAYER_2_PORT
+from SNetwork.Crypt.KEM import KEM
+from SNetwork.Crypt.Sign import Signer
+from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
+from SNetwork.Utils.Types import Int, Json, Bytes, Dict, Optional, List
 
 
 @dataclass(kw_only=True)

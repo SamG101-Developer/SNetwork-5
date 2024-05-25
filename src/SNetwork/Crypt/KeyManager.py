@@ -1,5 +1,5 @@
-from src.Crypt.AsymmetricKeys import PubKey, SecKey
-from src.Utils.Types import Bytes
+from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
+from SNetwork.Utils.Types import Bytes
 
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
@@ -19,3 +19,6 @@ class KeyManager:
     def get_static_secret_key() -> SecKey:
         pem = open("_crypt/secret_key.pem", "rb").read()
         return SecKey(load_pem_private_key(pem, None))
+
+
+__all__ = ["KeyManager"]

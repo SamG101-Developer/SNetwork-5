@@ -1,10 +1,9 @@
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.padding import OAEP, MGF1
-from cryptography.hazmat.primitives.hashes import SHA256
 
-from src.Crypt.AsymmetricKeys import SecKey, PubKey
-from src.Crypt.KeyPair import KeyPair, KEMKeyPair
-from src.Utils.Types import Bytes
+from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey, KeyPair, KEMKeyPair
+from SNetwork.Crypt.Hash import HashAlgorithms
+from SNetwork.Utils.Types import Bytes
 
 
 class KEM:
@@ -22,24 +21,29 @@ class KEM:
 
     @staticmethod
     def kem_wrap(their_ephemeral_public_key: PubKey, decapsulated_key: Bytes) -> KEMKeyPair:
-        # Encapsulate the key and package both the encapsulated and decapsulated keys into a KEMKeyPair object.
+        # Encapsulate the key.
         encapsulated_key = their_ephemeral_public_key.encrypt(
             plaintext=decapsulated_key,
             padding=OAEP(
-                mgf=MGF1(SHA256()),
-                algorithm=SHA256(),
-                label=None
-            ))
+                mgf=MGF1(HashAlgorithms.SHA2_256()),
+                algorithm=HashAlgorithms.SHA2_256(),
+                label=None))
+
+        # Package both the encapsulated and decapsulated keys into a KEMKeyPair object.
         return KEMKeyPair(encapsulated_key, decapsulated_key)
 
     @staticmethod
     def kem_unwrap(my_ephemeral_secret_key: SecKey, encapsulated_key: Bytes) -> KEMKeyPair:
-        # Decapsulate the key and package both the encapsulated and decapsulated keys into a KEMKeyPair object.
+        # Decapsulate the key.
         decapsulated_key = my_ephemeral_secret_key.decrypt(
             ciphertext=encapsulated_key,
             padding=OAEP(
-                mgf=MGF1(SHA256()),
-                algorithm=SHA256(),
-                label=None
-            ))
+                mgf=MGF1(HashAlgorithms.SHA2_256()),
+                algorithm=HashAlgorithms.SHA2_256(),
+                label=None))
+
+        # Package both the encapsulated and decapsulated keys into a KEMKeyPair object.
         return KEMKeyPair(encapsulated_key, decapsulated_key)
+
+
+__all__ = ["KEM"]

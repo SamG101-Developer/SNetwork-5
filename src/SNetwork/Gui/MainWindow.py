@@ -3,11 +3,11 @@ import glob, os
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QWidget, QGridLayout, QFileDialog, QInputDialog
 
-from src.Gui.AppItem import AppItem
-from src.Gui.Banner import BannerWidget
-from src.CommStack.Stack import Stack
-from src.DirectoryService.DirectoryService import DirectoryService
-from src.Utils.Types import Optional
+from SNetwork.Gui.AppItem import AppItem
+from SNetwork.Gui.Banner import BannerWidget
+from SNetwork.CommStack.Stack import Stack
+from SNetwork.DirectoryService.DirectoryService import DirectoryService
+from SNetwork.Utils.Types import Optional
 
 
 class MainWindow(QWidget):

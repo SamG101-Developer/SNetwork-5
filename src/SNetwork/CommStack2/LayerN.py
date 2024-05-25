@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 
-from src.Utils.Types import Bytes, Json, Int, Optional
-from src.Crypt.AsymmetricKeys import SecKey
+from SNetwork.Crypt.AsymmetricKeys import SecKey
+from SNetwork.Utils.Types import Bytes, Json, Int, Optional
 
 
 # class LevelNSocket(ABC):
@@ -25,7 +26,7 @@ class Connection:
     """
     Each Connection object represents a connection to a remote node. It contains a list of data pertaining to the node,
     and the encrypted connection.
-    
+
     Attributes:
         address: The IPv6 address of the remote node.
         identifier: The identifier of the remote node.
@@ -59,10 +60,10 @@ class LayerN(ABC):
     Abstract class that defines the structure of a network layer. Every method in this class is abstract and must be
     implemented by a subclass. The purpose of this class is to define a common interface for network layers. Each layer
     operates over a separate socket, isolating subsets of commands and data from the rest of the stack.
-    
+
     Attributes:
         _socket: The socket object used to send and receive data.
-        
+
     Methods:
         _listen: The method that listens for incoming data.
         _handle_command: The method that processes incoming data.

@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import struct
+import time
 from ipaddress import IPv6Address
 from enum import Enum
 from threading import Thread
-import json, logging, os, struct, time
 
-from src.Crypt.AsymmetricKeys import SecKey, PubKey
-from src.Crypt.KEM import KEM
-from src.Crypt.KeyManager import KeyManager
-from src.Crypt.Sign import Signer
-from src.Crypt.Certificate import X509Certificate
-from src.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from src.Utils.Types import Bytes, Optional, Dict, List, Json, Int
-from src.CONFIG import LAYER_4_PORT, DEFAULT_IPV6
+from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
+from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
+from SNetwork.Crypt.KEM import KEM
+from SNetwork.Crypt.KeyManager import KeyManager
+from SNetwork.Crypt.Sign import Signer
+from SNetwork.Crypt.Certificate import X509Certificate
+from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.Utils.Types import Bytes, Optional, Dict, List, Json, Int
 
 
 class Layer4Protocol(LayerNProtocol, Enum):
