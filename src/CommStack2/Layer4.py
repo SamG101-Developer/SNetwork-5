@@ -106,14 +106,15 @@ class Layer4(LayerN):
                 self._handle_accept_connection(address, request)
             case Layer4Protocol.RejectConnection.value if self._conversations[token].state == Layer4Protocol.RequestConnection:
                 self._handle_reject_connection(address, request)
-            case Layer4Protocol.CloseConnection.value:
+            case Layer4Protocol.CloseConnection.value if token in self._conversations:
                 self._handle_close_connection(address, request)
             case _:
                 logging.error(f"Invalid command: {request['command']}")
                 logging.error(f"Conversation state: {self._conversations[token].state}")
 
     def _send(self, connection: Connection, data: Json) -> None:
-        # Send the unencrypted data to the address.
+        # Add the connection token, and send the unencrypted data to the address.
+        data["token"] = connection.token.hex()
         encoded_data = json.dumps(data).encode()
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
@@ -147,7 +148,6 @@ class Layer4(LayerN):
         # Create the JSON request to request a connection.
         request = {
             "command": Layer4Protocol.RequestConnection.value,
-            "token": token.hex(),
             "certificate": self._this_certificate.der.hex(),
             "ephemeral_public_key": this_ephemeral_key_pair.public_key.der.hex(),
             "ephemeral_public_key_signature": this_ephemeral_public_key_signed.hex()}
@@ -190,7 +190,6 @@ class Layer4(LayerN):
         if not Signer.verify(that_static_public_key, that_ephemeral_public_key.der, that_ephemeral_public_key_signature):
             response = {
                 "command": Layer4Protocol.RejectConnection.value,
-                "token": token.hex(),
                 "reason": "Invalid ephemeral public key signature."}
             self._send(connection, response)
             return
@@ -200,7 +199,6 @@ class Layer4(LayerN):
         challenge_signed = Signer.sign(self._this_static_secret_key, challenge)
         response = {
             "command": Layer4Protocol.SignatureChallenge.value,
-            "token": token.hex(),
             "challenge": challenge.hex()}
 
         # Send the request and store the conversation state.
@@ -224,7 +222,6 @@ class Layer4(LayerN):
         except AssertionError as e:
             response = {
                 "command": Layer4Protocol.CloseConnection.value,
-                "token": token.hex(),
                 "reason": f"Invalid challenge: {e}."}
             self._send(connection, response)
             return
@@ -234,7 +231,6 @@ class Layer4(LayerN):
         challenge_response = Signer.sign(self._this_static_secret_key, challenge)
         response = {
             "command": Layer4Protocol.ChallengeResponse.value,
-            "token": token.hex(),
             "challenge_response": challenge_response.hex()}
 
         # Send the request and store the conversation state.
@@ -261,7 +257,6 @@ class Layer4(LayerN):
         if not Signer.verify(that_static_public_key, challenge, challenge_response):
             response = {
                 "command": Layer4Protocol.CloseConnection.value,
-                "token": token.hex(),
                 "reason": "Invalid challenge response signature."}
             self._send(connection, response)
             return
@@ -272,7 +267,6 @@ class Layer4(LayerN):
         kem_wrapped_primary_key = KEM.kem_wrap(connection.ephemeral_public_key, primary_key + kem_wrapped_primary_key_signed).encapsulated
         response = {
             "command": Layer4Protocol.AcceptConnection.value,
-            "token": request["token"],
             "kem_primary_key": kem_wrapped_primary_key.hex()}
 
         # Send the request and store the conversation state.
@@ -300,7 +294,6 @@ class Layer4(LayerN):
         if not Signer.verify(that_static_public_key, primary_key, primary_key_signature):
             response = {
                 "command": Layer4Protocol.CloseConnection.value,
-                "token": token.hex(),
                 "reason": "Invalid kem wrapped primary key signature."}
             self._send(connection, response)
             return
