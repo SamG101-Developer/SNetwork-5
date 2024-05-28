@@ -9,18 +9,6 @@ from SNetwork.Crypt.AsymmetricKeys import SecKey
 from SNetwork.Utils.Types import Bytes, Json, Int, Optional
 
 
-# class LevelNSocket(ABC):
-#     @abstractmethod
-#     @property
-#     def port(self) -> Int:
-#         ...
-#
-#     @abstractmethod
-#     @property
-#     def buffer_size(self) -> Int:
-#         ...
-
-
 @dataclass(kw_only=True)
 class Connection:
     """
@@ -57,7 +45,7 @@ class LayerNProtocol:
 
 class LayerN(ABC):
     """
-    Abstract class that defines the structure of a network layer. Every method in this class is abstract and must be
+    Abstract class, which defines the structure of a network layer. Every method in this class is abstract and must be
     implemented by a subclass. The purpose of this class is to define a common interface for network layers. Each layer
     operates over a separate socket, isolating subsets of commands and data from the rest of the stack.
 
@@ -73,25 +61,52 @@ class LayerN(ABC):
 
     _socket: Socket
 
-    def __init__(self):
-        self._socket = Socket(AF_INET6, SOCK_DGRAM)
+    def __init__(self, socket_type: int = SOCK_DGRAM):
+        """
+        The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
+        data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
+        isn't used is for the Layer1 proxy socket, which listens for TCP connections, to proxy the data out.
+        """
+        self._socket = Socket(AF_INET6, socket_type)
 
     @abstractmethod
     def _listen(self) -> None:
-        ...
+        """
+        This method is used to listen for incoming data on the socket. There is a "listen" method per port being used by
+        the Communication Stack. This is because each layer of the stack interprets data differently; Layer4 will
+        receive raw, unencrypted data, where-as Layer2/3 will receive encrypted data. Layer1 only receives data from the
+        applications running the proxy.
+        """
 
     @abstractmethod
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
-        ...
+        """
+        This method is used to call the correct handler methods depending on the command received. The command is
+        extracted from the request, and the appropriate handler is called. There can be optional validation checks, such
+        as ensuring that the request contains a command and token.
+        """
 
     @abstractmethod
     def _send(self, connection: Connection, data: Json) -> None:
-        ...
+        """
+        This method is used to send data to a connection. The connection object contains the necessary information to
+        send the data to the correct node. Different layers treat the data differently, for example, encrypting the data
+        will require a {"token": ..., "enc_data": ...} format, where-as raw data will only require the data to be sent.
+        """
 
     @property
     @abstractmethod
     def _port(self) -> Int:
-        ...
+        """
+        This property is used to return the port number used by the layer. This is used to bind the socket to the
+        correct port, and to identify the layer in the Communication Stack. It is defined as a property to allow
+        abstract methods to use the port no matter the implementation.
+        """
 
     def __del__(self):
+        """
+        The shared deletion method for all LayerN objects. This method closes the socket when the object is deleted, as
+        long as the socket is not yet closed.
+        """
+
         self._socket and self._socket.close()
