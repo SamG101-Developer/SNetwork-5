@@ -5,17 +5,18 @@ import logging
 import os
 import struct
 import time
-from ipaddress import IPv6Address
 from enum import Enum
+from ipaddress import IPv6Address
 from threading import Thread
 
-from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
+from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6, SOCKET_JSON_ERROR
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
 from SNetwork.Crypt.KEM import KEM
 from SNetwork.Crypt.KeyManager import KeyManager
 from SNetwork.Crypt.Sign import Signer
 from SNetwork.Crypt.Certificate import X509Certificate
-from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Types import Bytes, Optional, Dict, List, Json, Int
 
 
@@ -46,7 +47,7 @@ class Layer4(LayerN):
         _cached_certificates: A dictionary of cached certificates for other nodes.
 
     Methods:
-        connect: Initiates a connection to a remote node.
+        connect: Initiate a connection to a remote node.
         _listen: Listens for incoming raw requests on the insecure socket.
         _handle_command: Handles incoming commands from other nodes.
         _send: Sends unencrypted data to a remote node.
@@ -88,8 +89,8 @@ class Layer4(LayerN):
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket.recvfrom(4096)
-            request = json.loads(data)
-            Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
+            request = SafeJson.loads(data)  # , lambda: self._socket.sendto(SOCKET_JSON_ERROR, (address[0], self._port)))
+            request and Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         # Check the request has a command and token, and parse the token.
@@ -128,17 +129,27 @@ class Layer4(LayerN):
         return LAYER_4_PORT
 
     def connect(self, address: IPv6Address, that_identifier: Bytes) -> Optional[Connection]:
+        """
+        The "connect" method is called to create a UDP connection to another node in the network. This method handles
+        the handshake, and authenticates and encrypts the connection. If the connection is accepted, a Connection object
+        is returned, which can be used to send and receive data. Otherwise, None is returned.
+        """
+
         logging.debug(f"Connecting to {address}")
 
-        # Create a unique token for the conversation.
+        # Create a unique token for the conversation, allowing for multiple context-free conversations with the same
+        # node. The token will be sent with every message, and used as the key for accessing connections.
         token = os.urandom(32)
 
-        # Prepare static and ephemeral keys.
+        # Generate a new ephemeral key pair and sign the public key using the static secret key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
-        this_ephemeral_public_key_signed = Signer.sign(self._this_static_secret_key, this_ephemeral_key_pair.public_key.der)
-        logging.debug(f"This ephemeral public key: {this_ephemeral_key_pair.public_key.der.hex()}")
+        this_ephemeral_public_key_signed = Signer.sign(
+            my_static_secret_key=self._this_static_secret_key,
+            message=this_ephemeral_key_pair.public_key.der,
+            their_id=that_identifier)
 
-        # Create the Connection object to track the conversation.
+        # Create the Connection object to track the conversation. It also contains all cryptography-related data used by
+        # higher levels in the Communication Stack.
         connection = Connection(
             address=address,
             identifier=that_identifier,
@@ -149,7 +160,7 @@ class Layer4(LayerN):
             ephemeral_secret_key=this_ephemeral_key_pair.secret_key,
             e2e_primary_key=None)
 
-        # Create the JSON request to request a connection.
+        # Create the JSON request to request a connection. Include the certificate and signed ephemeral public key.
         request = {
             "command": Layer4Protocol.RequestConnection.value,
             "certificate": self._this_certificate.der.hex(),
@@ -160,7 +171,7 @@ class Layer4(LayerN):
         self._conversations[token] = connection
         self._send(connection, request)
 
-        # Wait for the connection to be accepted or rejected.
+        # Wait for the connection to be accepted or rejected, and return a value accordingly.
         while connection.state not in {Layer4Protocol.AcceptConnection, Layer4Protocol.RejectConnection, Layer4Protocol.CloseConnection}:
             pass
         return connection if connection.state == Layer4Protocol.AcceptConnection else None
