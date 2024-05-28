@@ -15,17 +15,17 @@ from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Utils.Types import Int, Json, Bytes, Dict, Optional, List
 
 
+class RouteNodeState(Enum):
+    Waiting = 0x00
+    Accepted = 0x01
+    Rejected = 0x02
+
+
 @dataclass(kw_only=True)
 class Route:
     route_token: Bytes
     entry_token: Bytes
     nodes: List[RouteNode]
-
-
-class RouteNodeState(Enum):
-    Waiting = 0x00
-    Accepted = 0x01
-    Rejected = 0x02
 
 
 @dataclass(kw_only=True)
@@ -38,7 +38,7 @@ class RouteNode:
     state: RouteNodeState = field(default=RouteNodeState.Waiting)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TunnelKeyGroup:
     ephemeral_secret_key: SecKey
     primary_key: Optional[Bytes] = field(default=None)
@@ -139,7 +139,7 @@ class Layer2(LayerN):
         challenge = bytes.fromhex(request["challenge"])
         tunnel_ephemeral_public_key_pair = KEM.generate_key_pair()
         signature = Signer.sign(self._layer4._this_static_secret_key, challenge + tunnel_ephemeral_public_key_pair.public_key.der)
-        self._tunnel_keys[route_token] = TunnelKeyGroup(tunnel_ephemeral_public_key_pair.secret_key)
+        self._tunnel_keys[route_token] = TunnelKeyGroup(ephemeral_secret_key=tunnel_ephemeral_public_key_pair.secret_key)
 
         # Send the ephemeral public key and signature back to the target's current final node.
         self._tunnel_message_backwards(route_token, {
@@ -150,7 +150,6 @@ class Layer2(LayerN):
 
     def _handle_tunnel_ephemeral_key(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel ephemeral key from {address}")
-        token = bytes.fromhex(request["token"])
 
         # Determine crypto-related information regarding the target.
         target_ephemeral_public_key = PubKey.from_der(bytes.fromhex(request["ephemeral_public_key"]))
@@ -170,7 +169,7 @@ class Layer2(LayerN):
 
         # Wrap the primary key with the target's ephemeral public key, and tunnel it forwards.
         wrapped_primary_key = KEM.kem_wrap(target_ephemeral_public_key, self._route.nodes[-1].e2e_primary_key).encapsulated
-        self._tunnel_message_forwards(self._layer4._conversations[token], self._route.route_token, {
+        self._tunnel_message_forwards(self._route.route_token, {
             "command": Layer2Protocol.TunnelPrimaryKey.value,
             "route_token": self._route.route_token.hex(),
             "wrapped_primary_key": wrapped_primary_key.hex(),
@@ -221,7 +220,7 @@ class Layer2(LayerN):
     def _handle_forward_message(self, address: IPv6Address, request: Json) -> None:
         ...
 
-    def _tunnel_message_forwards(self, connection: Connection, route_token: Bytes, request: Json) -> None:
+    def _tunnel_message_forwards(self, route_token: Bytes, request: Json) -> None:
         ...
 
     def _tunnel_message_backwards(self, route_token: Bytes, request: Json) -> None:
