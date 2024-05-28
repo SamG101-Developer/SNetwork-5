@@ -30,20 +30,20 @@ class Signer:
         return KeyPair(secret_key, public_key)
 
     @staticmethod
-    def sign(my_static_private_key: SecKey, message: Bytes, their_id: Bytes) -> Bytes:
+    def sign(*, my_static_secret_key: SecKey, message: Bytes, their_id: Bytes) -> Bytes:
         # Add the id to the message.
         message += their_id
         message += struct.pack("!d", time.time())
 
         # Sign the hashed message.
-        signature = my_static_private_key.sign(
+        signature = my_static_secret_key.sign(
             data=message,
             padding=PSS(MGF1(HashAlgorithms.SHA3_224()), PSS.MAX_LENGTH),
             algorithm=HashAlgorithms.SHA3_224())
         return signature
 
     @staticmethod
-    def verify(their_static_public_key: PubKey, message: Bytes, signature: Bytes, target_id: Bytes, check_time: Bool = True) -> Bool:
+    def verify(*, their_static_public_key: PubKey, message: Bytes, signature: Bytes, target_id: Bytes, check_time: Bool = True) -> Bool:
         # Extract the message and reproduce the hash.
         timestamp = struct.unpack("!d", message[-8:])[0]
         candidate_id = message[-HashAlgorithms.SHA3_256.digest_size - 8:-8]
