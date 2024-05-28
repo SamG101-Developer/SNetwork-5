@@ -6,9 +6,16 @@ LAYER_2_PORT = 40_002
 LAYER_3_PORT = 40_003
 LAYER_4_PORT = 40_004
 
+# Socket error codes.
+SOCKET_JSON_ERROR = {
+    "command": -1,
+    "message": "Invalid JSON data."
+}
+
 # Default IPv6 addresses.
 DIRECTORY_IP = IPv6Address("fe80::7c7b:e49b:8cd:dc22")
 DEFAULT_IPV6 = "::"
+LOOPBACK_IPV6 = "::1"
 
 # Default values for the DHT.
 DHT_KEY_LENGTH = 32
