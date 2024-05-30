@@ -13,9 +13,9 @@ class SafeJson:
             return {}
 
     @staticmethod
-    def dumps(data: Json, error_handler: Optional[Callable[[...], None]] = None) -> Str:
+    def dumps(data: Json, error_handler: Optional[Callable[[...], None]] = None) -> Bytes:
         try:
-            return json.dumps(data)
+            return json.dumps(data).encode()
         except TypeError:
             error_handler and error_handler()
-            return "{}"
+            return b"{}"
