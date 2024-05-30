@@ -6,6 +6,9 @@ LAYER_2_PORT = 40_002
 LAYER_3_PORT = 40_003
 LAYER_4_PORT = 40_004
 
+# Connection related constants.
+CONNECTION_TIMEOUT = 5
+
 # Socket error codes.
 SOCKET_JSON_ERROR = {
     "command": -1,
