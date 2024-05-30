@@ -23,19 +23,19 @@ class SymmetricEncryption:
         return random_key
 
     @staticmethod
-    def wrap_new_key(current_key: Bytes, new_key: Bytes) -> Bytes:
+    def wrap_new_key(*, current_key: Bytes, new_key: Bytes) -> Bytes:
         # Wrap the new key using the current key and return it.
         wrapped_key = aes_key_wrap(current_key, new_key)
         return wrapped_key
 
     @staticmethod
-    def unwrap_new_key(current_key: Bytes, wrapped_key: Bytes) -> Bytes:
+    def unwrap_new_key(*, current_key: Bytes, wrapped_key: Bytes) -> Bytes:
         # Unwrap the new key using the current key and return it.
         unwrapped_key = aes_key_unwrap(current_key, wrapped_key)
         return unwrapped_key
 
     @staticmethod
-    def encrypt(data: Bytes, key: Bytes) -> Bytes:
+    def encrypt(*, data: Bytes, key: Bytes) -> Bytes:
         # Generate a random nonce, encrypt the plaintext and return it with the nonce prepended.
         nonce = os.urandom(SymmetricEncryption.NONCE_LENGTH)
         encryption_engine = SymmetricEncryption.ALGORITHM(key)
@@ -43,7 +43,7 @@ class SymmetricEncryption:
         return nonce + ciphertext
 
     @staticmethod
-    def decrypt(data: Bytes, key: Bytes) -> Bytes:
+    def decrypt(*, data: Bytes, key: Bytes) -> Bytes:
         # Split the nonce anc ciphertext, decrypt the data and return it.
         nonce, ciphertext = data[:SymmetricEncryption.NONCE_LENGTH], data[SymmetricEncryption.NONCE_LENGTH:]
         decryption_engine = SymmetricEncryption.ALGORITHM(key)

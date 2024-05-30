@@ -20,7 +20,7 @@ class KEM:
         return KeyPair(secret_key, public_key)
 
     @staticmethod
-    def kem_wrap(their_ephemeral_public_key: PubKey, decapsulated_key: Bytes) -> KEMKeyPair:
+    def kem_wrap(*, their_ephemeral_public_key: PubKey, decapsulated_key: Bytes) -> KEMKeyPair:
         # Encapsulate the key.
         encapsulated_key = their_ephemeral_public_key.encrypt(
             plaintext=decapsulated_key,
@@ -33,7 +33,7 @@ class KEM:
         return KEMKeyPair(encapsulated_key, decapsulated_key)
 
     @staticmethod
-    def kem_unwrap(my_ephemeral_secret_key: SecKey, encapsulated_key: Bytes) -> KEMKeyPair:
+    def kem_unwrap(*, my_ephemeral_secret_key: SecKey, encapsulated_key: Bytes) -> KEMKeyPair:
         # Decapsulate the key.
         decapsulated_key = my_ephemeral_secret_key.decrypt(
             ciphertext=encapsulated_key,
