@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
-import os
+import os.path
+import secrets
 import struct
 import time
 from enum import Enum
@@ -10,7 +10,7 @@ from ipaddress import IPv6Address
 from threading import Thread
 
 from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6, SOCKET_JSON_ERROR
+from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
 from SNetwork.Crypt.KEM import KEM
 from SNetwork.Crypt.KeyManager import KeyManager
@@ -119,8 +119,7 @@ class Layer4(LayerN):
 
     def _send(self, connection: Connection, data: Json) -> None:
         # Add the connection token, and send the unencrypted data to the address.
-        data["token"] = connection.token.hex()
-        encoded_data = json.dumps(data).encode()
+        encoded_data = self._prep_data(connection, data)
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
@@ -139,7 +138,7 @@ class Layer4(LayerN):
 
         # Create a unique token for the conversation, allowing for multiple context-free conversations with the same
         # node. The token will be sent with every message, and used as the key for accessing connections.
-        token = os.urandom(32)
+        token = secrets.token_bytes(32)
 
         # Generate a new ephemeral key pair and sign the public key using the static secret key.
         this_ephemeral_key_pair = KEM.generate_key_pair()
@@ -149,7 +148,7 @@ class Layer4(LayerN):
             their_id=that_identifier)
 
         # Create the Connection object to track the conversation. It also contains all cryptography-related data used by
-        # higher levels in the Communication Stack.
+        # higher levels in the Communication Stack. Store it against the token in the "conversations" dictionary.
         connection = Connection(
             address=address,
             identifier=that_identifier,
@@ -159,19 +158,16 @@ class Layer4(LayerN):
             ephemeral_public_key=this_ephemeral_key_pair.public_key,
             ephemeral_secret_key=this_ephemeral_key_pair.secret_key,
             e2e_primary_key=None)
+        self._conversations[token] = connection
 
         # Create the JSON request to request a connection. Include the certificate and signed ephemeral public key.
-        request = {
+        self._send(connection, {
             "command": Layer4Protocol.RequestConnection.value,
             "certificate": self._this_certificate.der.hex(),
             "ephemeral_public_key": this_ephemeral_key_pair.public_key.der.hex(),
-            "ephemeral_public_key_signature": this_ephemeral_public_key_signed.hex()}
+            "ephemeral_public_key_signature": this_ephemeral_public_key_signed.hex()})
 
-        # Send the request and store the conversation state.
-        self._conversations[token] = connection
-        self._send(connection, request)
-
-        # Wait for the connection to be accepted or rejected, and return a value accordingly.
+        # Wait for the connection to be accepted, rejected or closed, and return a value accordingly.
         while connection.state not in {Layer4Protocol.AcceptConnection, Layer4Protocol.RejectConnection, Layer4Protocol.CloseConnection}:
             pass
         return connection if connection.state == Layer4Protocol.AcceptConnection else None
@@ -202,24 +198,31 @@ class Layer4(LayerN):
             e2e_primary_key=None)
 
         # Verify the signed ephemeral public key, and reject the connection if there's an invalid signature.
-        if not Signer.verify(that_static_public_key, that_ephemeral_public_key.der, that_ephemeral_public_key_signature):
-            response = {
+        verification = Signer.verify(
+            their_static_public_key=that_static_public_key,
+            message=that_ephemeral_public_key.der,
+            signature=that_ephemeral_public_key_signature,
+            target_id=self._this_identifier)
+
+        if not verification:
+            self._send(connection, {
                 "command": Layer4Protocol.RejectConnection.value,
-                "reason": "Invalid ephemeral public key signature."}
-            self._send(connection, response)
+                "reason": "Invalid ephemeral public key signature."})
             return
 
         # Send a signed challenge for the requesting node to sign, to ensure that it has the private key.
-        challenge = os.urandom(24) + struct.pack("!d", time.time())
-        challenge_signed = Signer.sign(self._this_static_secret_key, challenge)
-        response = {
-            "command": Layer4Protocol.SignatureChallenge.value,
-            "challenge": challenge.hex()}
+        challenge = secrets.token_bytes(24) + struct.pack("!d", time.time())
+        challenge_signed = Signer.sign(
+            my_static_secret_key=self._this_static_secret_key,
+            message=challenge,
+            their_id=that_identifier)
 
         # Send the request and store the conversation state.
         self._conversations[connection.token] = connection
         self._conversations[connection.token].challenge = challenge
-        self._send(connection, response)
+        self._send(connection, {
+            "command": Layer4Protocol.SignatureChallenge.value,
+            "challenge": challenge.hex()})
 
     def _handle_signature_challenge(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received signature challenge from {address}")
@@ -235,24 +238,27 @@ class Layer4(LayerN):
             assert challenge not in self._challenges, "Challenge has already been used."
             assert struct.unpack("!d", challenge[-8:])[0] > time.time() - 60, "Challenge is stale."
         except AssertionError as e:
-            response = {
+            self._send(connection, {
                 "command": Layer4Protocol.CloseConnection.value,
-                "reason": f"Invalid challenge: {e}."}
-            self._send(connection, response)
+                "reason": f"Invalid challenge: {e}."})
             return
 
         # Sign the challenge response and send it to the accepting node.
         logging.debug("Signing challenge")
-        challenge_response = Signer.sign(self._this_static_secret_key, challenge)
-        response = {
-            "command": Layer4Protocol.ChallengeResponse.value,
-            "challenge_response": challenge_response.hex()}
+        challenge_response = Signer.sign(
+            my_static_secret_key=self._this_static_secret_key,
+            message=challenge,
+            their_id=connection.identifier)
 
-        # Send the request and store the conversation state.
+        # Update the connection information, and store the challenge.
         connection.state = Layer4Protocol.ChallengeResponse
         connection.challenge = challenge
         self._challenges.append(challenge)
-        self._send(connection, response)
+
+        # Send the challenge response.
+        self._send(connection, {
+            "command": Layer4Protocol.ChallengeResponse.value,
+            "challenge_response": challenge_response.hex()})
 
     def _handle_challenge_response(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received challenge response from {address}")
@@ -265,29 +271,41 @@ class Layer4(LayerN):
         that_identifier = connection.identifier
         that_static_public_key = self._cached_certificates[that_identifier].public_key
 
-        # Verify the challenge response.
+        # Extract the challenge and the challenge-response from the data.
         challenge = connection.challenge
         challenge_response = bytes.fromhex(request["challenge_response"])
-        logging.debug("Verifying challenge response")
-        if not Signer.verify(that_static_public_key, challenge, challenge_response):
-            response = {
+
+        # Verify the challenge response.
+        verification = Signer.verify(
+            their_static_public_key=that_static_public_key,
+            message=challenge,
+            signature=challenge_response,
+            target_id=self._this_identifier)
+
+        if not verification:
+            self._send(connection, {
                 "command": Layer4Protocol.CloseConnection.value,
-                "reason": "Invalid challenge response signature."}
-            self._send(connection, response)
+                "reason": "Invalid challenge response signature."})
             return
 
-        # Create the response to accept the connection, and wrap a primary key for end-to-end encryption.
-        primary_key = os.urandom(32)
-        kem_wrapped_primary_key_signed = Signer.sign(self._this_static_secret_key, primary_key)
-        kem_wrapped_primary_key = KEM.kem_wrap(connection.ephemeral_public_key, primary_key + kem_wrapped_primary_key_signed).encapsulated
-        response = {
-            "command": Layer4Protocol.AcceptConnection.value,
-            "kem_primary_key": kem_wrapped_primary_key.hex()}
+        # Create a primary key, and sign it with the static secret key.
+        primary_key = secrets.token_bytes(32)
+        kem_wrapped_primary_key_signed = Signer.sign(
+            my_static_secret_key=self._this_static_secret_key,
+            message=primary_key,
+            their_id=that_identifier)
 
-        # Send the request and store the conversation state.
+        # Wrap the primary key and its signature inside the KEM.
+        kem_wrapped_primary_key = KEM.kem_wrap(
+            their_ephemeral_public_key=connection.ephemeral_public_key,
+            decapsulated_key=primary_key + kem_wrapped_primary_key_signed).encapsulated
+
+        # Send the request and update the connection information.
         connection.state = Layer4Protocol.AcceptConnection
         connection.e2e_primary_key = primary_key
-        self._send(connection, response)
+        self._send(connection, {
+            "command": Layer4Protocol.AcceptConnection.value,
+            "kem_primary_key": kem_wrapped_primary_key.hex()})
 
     def _handle_accept_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received connection acceptance from {address}")
@@ -302,15 +320,22 @@ class Layer4(LayerN):
 
         # Decapsulate the key to get the primary key and its signature.
         kem_wrapped_primary_key = bytes.fromhex(request["kem_primary_key"])
-        primary_key_and_signature = KEM.kem_unwrap(connection.ephemeral_secret_key, kem_wrapped_primary_key)
+        primary_key_and_signature = KEM.kem_unwrap(
+            my_ephemeral_secret_key=connection.ephemeral_secret_key,
+            encapsulated_key=kem_wrapped_primary_key)
         primary_key, primary_key_signature = primary_key_and_signature.decapsulated[:32], primary_key_and_signature.decapsulated[32:]
 
         # Verify the signature on the kem wrapped primary key.
-        if not Signer.verify(that_static_public_key, primary_key, primary_key_signature):
-            response = {
+        verification = Signer.verify(
+            their_static_public_key=that_static_public_key,
+            message=primary_key,
+            signature=primary_key_signature,
+            target_id=self._this_identifier)
+
+        if not verification:
+            self._send(connection, {
                 "command": Layer4Protocol.CloseConnection.value,
-                "reason": "Invalid kem wrapped primary key signature."}
-            self._send(connection, response)
+                "reason": "Invalid kem wrapped primary key signature."})
             return
 
         # Mark the connection as accepted.
