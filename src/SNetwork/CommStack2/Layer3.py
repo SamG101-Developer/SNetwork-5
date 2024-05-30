@@ -1,5 +1,4 @@
 import random
-import json
 import logging
 import lzma
 import operator
@@ -16,6 +15,7 @@ from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENG
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float
+from SNetwork.Utils.Json import SafeJson
 
 
 type KBucket = List[Connection]
@@ -111,21 +111,24 @@ class Layer3(LayerN):
         logging.debug("Layer 3 Ready")
 
     def _listen(self) -> None:
+        # todo: move into shared function (with layer 2) - secure_listen/recv
         # Bind the insecure socket to port 40000.
         self._socket.bind((DEFAULT_IPV6, self._port))
 
-        # Listen for incoming raw requests, and handle them in a new thread.
         while True:
+            # Split the data into its token (to get the encryption key), and the encrypted data.
             data, address = self._socket.recvfrom(4096)
-            request = json.loads(data)
+            request = SafeJson.loads(data)
             token, encrypted_data = request["token"], request["data"]
 
+            # Ensure the token represents a connection that both exists, and is in the accepted state.
             if token in self._level4._conversations.keys() and self._level4._conversations[token].state == Layer4Protocol.AcceptConnection:
                 e2e_key = self._level4._conversations[token].e2e_primary_key
-                decrypted_data = SymmetricEncryption.decrypt(e2e_key, encrypted_data)
-                decrypted_json = json.loads(decrypted_data)
+                decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
+                decrypted_json = SafeJson.loads(decrypted_data)
                 Thread(target=self._handle_command, args=(IPv6Address(address[0]), decrypted_json)).start()
 
+            # Otherwise, the connection is unknown, and the request is ignored.
             else:
                 logging.warning(f"Received request from unknown token {token}.")
                 continue
@@ -156,18 +159,22 @@ class Layer3(LayerN):
                 logging.error(f"Invalid command: {request["command"]}")
 
     def _send(self, connection: Connection, data: Json) -> None:
+        # todo: move into shared function (with layer 2) - secure_send
+
         # Check the connection is in the accepted state.
         if connection.state != Layer4Protocol.AcceptConnection:
             logging.error(f"Cannot send data to connection in state {connection.state}.")
             return
 
         # Encrypt the data with the end-to-end key.
-        e2e_key = self._level4._conversations[connection.token].e2e_primary_key
-        encrypted_data = SymmetricEncryption.encrypt(e2e_key, json.dumps(data).encode())
-        wrapped = {"token": connection.token, "data": encrypted_data}
+        encrypted_data = SymmetricEncryption.encrypt(
+            data=self._prep_data(connection, data),
+            key=self._level4._conversations[connection.token].e2e_primary_key)
 
         # Send the encrypted data to the address.
-        encoded_data = json.dumps(wrapped).encode()
+        encoded_data = SafeJson.dumps({
+            "token": connection.token,
+            "data": encrypted_data})
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
