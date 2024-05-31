@@ -9,6 +9,7 @@ from enum import Enum
 from ipaddress import IPv6Address
 from threading import Lock, Thread
 
+from SNetwork.CommStack2.CommunicationStack import CommunicationStack
 from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommStack2.Layer4 import Layer4, Layer4Protocol
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
@@ -58,7 +59,6 @@ class Layer3(LayerN):
     before any data is sent.
 
     Attributes:
-        _level4: The Layer 4 instance.
         _this_identifier: The identifier of this node.
         _k_buckets: The list of k-buckets, each containing a list of connections.
         _ping_queue: The list of connections that have been pinged.
@@ -86,19 +86,17 @@ class Layer3(LayerN):
         _all_known_nodes: Returns all known nodes in the DHT (flattens k_buckets).
     """
 
-    _level4: Layer4
     _this_identifier: Bytes
     _k_buckets: KBuckets
     _ping_queue: List[Tuple[Float, Connection]]
     _stored_keys: List[Bytes]
     _node_lookup_requests: Dict[Bytes, NodeLookupRequest]
 
-    def __init__(self, layer4: Layer4) -> None:
-        super().__init__()
+    def __init__(self, stack: CommunicationStack) -> None:
+        super().__init__(stack)
 
-        # Store the Layer 4 instance and this node's identifier.
-        self._level4 = layer4
-        self._this_identifier = self._level4._this_identifier
+        # Store this node's identifier.
+        self._this_identifier = self._stack._layer4._this_identifier
 
         # Initialize the DHT-oriented attributes.
         self._k_buckets = [[] for _ in range(8 * DHT_KEY_LENGTH)]
@@ -122,8 +120,8 @@ class Layer3(LayerN):
             token, encrypted_data = request["token"], request["data"]
 
             # Ensure the token represents a connection that both exists, and is in the accepted state.
-            if token in self._level4._conversations.keys() and self._level4._conversations[token].state == Layer4Protocol.AcceptConnection:
-                e2e_key = self._level4._conversations[token].e2e_primary_key
+            if token in self._stack._layer4._conversations.keys() and self._stack._layer4._conversations[token].state == Layer4Protocol.AcceptConnection:
+                e2e_key = self._stack._layer4._conversations[token].e2e_primary_key
                 decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
                 decrypted_json = SafeJson.loads(decrypted_data)
                 Thread(target=self._handle_command, args=(IPv6Address(address[0]), decrypted_json)).start()
@@ -169,7 +167,7 @@ class Layer3(LayerN):
         # Encrypt the data with the end-to-end key.
         encrypted_data = SymmetricEncryption.encrypt(
             data=self._prep_data(connection, data),
-            key=self._level4._conversations[connection.token].e2e_primary_key)
+            key=self._stack._layer4._conversations[connection.token].e2e_primary_key)
 
         # Send the encrypted data to the address.
         encoded_data = SafeJson.dumps({
@@ -240,11 +238,11 @@ class Layer3(LayerN):
         node_identifier = bytes.fromhex(node["identifier"])
 
         # Select a random connection to the node if any exist. Otherwise, create a new connection.
-        connection_candidates = [c for c in self._level4._conversations.values() if c.identifier == node_identifier]
-        connection = random.choice(connection_candidates) if connection_candidates else self._level4.connect(node_address, node_identifier)
+        connection_candidates = [c for c in self._stack._layer4._conversations.values() if c.identifier == node_identifier]
+        connection = random.choice(connection_candidates) if connection_candidates else self._stack._layer4.connect(node_address, node_identifier)
 
         # Send a get resource request to the node.
-        connection = self._level4.connect(node_address, node_identifier)
+        connection = self._stack._layer4.connect(node_address, node_identifier)
         request = {
             "command": Layer3Protocol.GetResource.value,
             "target": target_identifier}
@@ -304,7 +302,7 @@ class Layer3(LayerN):
     def _handle_ping(self, address: IPv6Address, request: Json) -> None:
         # Get the token and connection.
         token = bytes.fromhex(request["token"])
-        connection = self._level4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
 
         # Send a pong response.
         response = {
@@ -315,7 +313,7 @@ class Layer3(LayerN):
     def _handle_pong(self, address: IPv6Address, request: Json) -> None:
         # Get the token and connection.
         token = bytes.fromhex(request["token"])
-        connection = self._level4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
         timestamp = request["timestamp"]
 
         # Remove the ping request from the ping queue.
@@ -340,7 +338,7 @@ class Layer3(LayerN):
         # Get the token, connection and file identifier from the request.
         token = bytes.fromhex(request["token"])
         file_identifier = bytes.fromhex(request["target"])
-        connection = self._level4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
 
         # Check if this node is hosting the requested key.
         if file_identifier in self._stored_keys:
@@ -366,7 +364,7 @@ class Layer3(LayerN):
         # Get the token, connection, the file identifier from the request.
         token = bytes.fromhex(request["token"])
         file_identifier = bytes.fromhex(request["key"])
-        connection = self._level4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
 
         # If the resource was found, store the key and value in the DHT.
         if request["found"]:
@@ -391,7 +389,7 @@ class Layer3(LayerN):
         token = bytes.fromhex(request["token"])
         target_identifier = bytes.fromhex(request["target_node_identifier"])
 
-        connection = self._level4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
         node_lookup_request = self._node_lookup_requests[target_identifier]
 
         # Mark the node as queried.

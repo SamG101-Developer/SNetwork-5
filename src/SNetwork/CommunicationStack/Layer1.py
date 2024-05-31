@@ -4,9 +4,9 @@ from ipaddress import IPv6Address
 from socket import socket as Socket, SOCK_STREAM
 from threading import Thread
 
-from SNetwork.Config import LAYER_1_PORT
+from SNetwork.CommStack2.CommunicationStack import CommunicationStack
 from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.CommStack2.Layer2 import Layer2
+from SNetwork.Config import LAYER_1_PORT
 from SNetwork.Utils.Types import Int, Json
 from SNetwork.Utils.HttpParser import HttpParser
 from SNetwork.Utils.SelectableDict import SelectableDict, Selectable
@@ -17,13 +17,10 @@ class Layer1Protocol(LayerNProtocol, Enum):
 
 
 class Layer1(LayerN):
-    _layer2: Layer2
     _selectable_dict: SelectableDict[Int, Json]
 
-    def __init__(self, layer2: Layer2):
-        super().__init__(SOCK_STREAM)
-
-        self._layer2 = layer2
+    def __init__(self, stack: CommunicationStack):
+        super().__init__(stack, SOCK_STREAM)
         self._selectable_dict = SelectableDict[Int, Json]()
 
     def _listen(self) -> None:
@@ -38,7 +35,6 @@ class Layer1(LayerN):
 
         # Get the target key from the dictionary.
         unique_id = len(self._selectable_dict) + 1
-        # todo: forward message to entry node with "unique_id" attached [layer 2]
 
         # Get the unfilled Selectable and send a connection established response.
         target_getter = self._selectable_dict[unique_id]
@@ -61,7 +57,7 @@ class Layer1(LayerN):
                 readable, _, errored = select.select(sockets, [], sockets)
 
                 # Receive data from the readable sockets, and send it to the other socket.
-                for sock in readable:
+                for sock in readable:  # todo: this isn't right (one needs to be set from layer 2, and one needs to send into layer 2)
                     data = sock.recv(4096)
                     if not data:
                         break

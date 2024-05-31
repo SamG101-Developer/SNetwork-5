@@ -8,6 +8,7 @@ from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread, Lock
 
+from SNetwork.CommStack2.CommunicationStack import CommunicationStack
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple
 from SNetwork.Utils.Json import SafeJson
@@ -68,18 +69,20 @@ class LayerN(ABC):
     _socket: Socket
     _message_map: Dict[Bytes, Tuple[Float, Json]]
     _message_map_lock: Lock
+    _stack: CommunicationStack
 
-    def __init__(self, socket_type: Int = SOCK_DGRAM):
+    def __init__(self, stack: CommunicationStack, socket_type: Int = SOCK_DGRAM):
         """
         The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
         data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
         isn't used is for the Layer1 proxy socket, which listens for TCP connections, to proxy the data out.
         """
 
-        # Initialize the socket and message map.
+        # Initialize the layer's attributes.
         self._socket = Socket(AF_INET6, socket_type)
         self._message_map = {}
         self._message_map_lock = Lock()
+        self._stack = stack
 
         # Start the message map cleaner thread.
         Thread(target=self._clean_message_map).start()

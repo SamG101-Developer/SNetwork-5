@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
+import lzma
 import secrets
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
+from socket import socket as Socket
 
+from SNetwork.CommStack2.CommunicationStack import CommunicationStack
 from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.CommStack2.Layer3 import Layer3
-from SNetwork.CommStack2.Layer4 import Layer4
 from SNetwork.Config import LAYER_2_PORT
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Crypt.KEM import KEM
@@ -55,22 +56,18 @@ class Layer2Protocol(LayerNProtocol, Enum):
     TunnelAccept = 0x04
     TunnelReject = 0x05
     ForwardMessage = 0x06
-    ForwardData: 0x07
+    InternetSend = 0x07
+    InternetRecv = 0x08
 
 
 class Layer2(LayerN):
-    _layer3: Layer3
-    _layer4: Layer4
-
     _route: Optional[Route]
     _route_forward_token_map: Dict[Bytes, Bytes]  # Connection Token => Connection Token
     _route_reverse_token_map: Dict[Bytes, Bytes]  # Connection Token => Connection Token
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]     # Route ID => Tunnel Key Group
 
-    def __init__(self, layer3: Layer3, layer4: Layer4) -> None:
-        super().__init__()
-        self._layer3 = layer3
-        self._layer4 = layer4
+    def __init__(self, stack: CommunicationStack) -> None:
+        super().__init__(stack)
 
     def _listen(self) -> None:
         pass
@@ -97,8 +94,10 @@ class Layer2(LayerN):
                 self._handle_tunnel_reject(address, request)
             case Layer2Protocol.ForwardMessage:
                 self._handle_forward_message(address, request)
-            case Layer2Protocol.ForwardData:
-                self._handle_forward_data(address, request)
+            case Layer2Protocol.InternetSend:
+                self._handle_internet_send(address, request)
+            case Layer2Protocol.InternetRecv:
+                self._handle_internet_recv(address, request)
             case _:
                 logging.error(f"Invalid command: {request["command"]}")
 
@@ -112,8 +111,12 @@ class Layer2(LayerN):
     def create_route(self) -> None:
         ...
 
-    def forward_data(self, data: Bytes) -> None:
-        ...
+    def forward_internet_data(self, data: Bytes) -> None:
+        request = {
+            "command": Layer2Protocol.InternetSend.value,
+            "data": lzma.compress(data).hex()}
+
+        self._tunnel_message_forwards(request)
 
     def _handle_extend_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Extending a connection to {address}")
@@ -124,7 +127,7 @@ class Layer2(LayerN):
         route_token = bytes.fromhex(request["route_token"])
 
         # Connect to this target.
-        extended_connection = self._layer4.connect(target_address, target_identifier)
+        extended_connection = self._stack._layer4.connect(target_address, target_identifier)
 
         # If the connection was successful, request an ephemeral public key from the target.
         if extended_connection:
@@ -154,9 +157,9 @@ class Layer2(LayerN):
         # Sign the challenge and ephemeral public key together and the challenge.
         challenge = bytes.fromhex(request["challenge"])
         signature = Signer.sign(
-            my_static_secret_key=self._layer4._this_static_secret_key,
+            my_static_secret_key=self._stack._layer4._this_static_secret_key,
             message=challenge + tunnel_ephemeral_public_key_pair.public_key.der,
-            their_id=self._layer4._conversations[token].identifier)
+            their_id=self._stack._layer4._conversations[token].identifier)
         self._tunnel_keys[route_token] = TunnelKeyGroup(ephemeral_secret_key=tunnel_ephemeral_public_key_pair.secret_key)
 
         # Send the ephemeral public key and signature back to the target's current final node.
@@ -172,7 +175,7 @@ class Layer2(LayerN):
         # Determine crypto-related information regarding the target.
         target_ephemeral_public_key = PubKey.from_der(bytes.fromhex(request["ephemeral_public_key"]))
         target_signature = bytes.fromhex(request["signature"])
-        target_certificate = self._layer4._cached_certificates[self._route.nodes[-1].identifier]
+        target_certificate = self._stack._layer4._cached_certificates[self._route.nodes[-1].identifier]
         target_static_public_key = target_certificate.public_key
 
         # Verify the signature of the challenge and ephemeral public key.
@@ -219,15 +222,14 @@ class Layer2(LayerN):
 
         # Tunnel a signature of the hashed primary key back to the target for authentication.
         signed_primary_key = Signer.sign(
-            my_static_secret_key=self._layer4._this_static_secret_key,
+            my_static_secret_key=self._stack._layer4._this_static_secret_key,
             message=primary_key,
-            their_id=self._layer4._conversations[route_token].identifier)
+            their_id=self._stack._layer4._conversations[route_token].identifier)
 
         self._tunnel_message_backwards(route_token, {
             "command": Layer2Protocol.TunnelAccept.value,
             "route_token": route_token.hex(),
-            "signed_primary_key": signed_primary_key.hex(),
-        })
+            "signed_primary_key": signed_primary_key.hex()})
 
     def _handle_tunnel_accept(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel accept from {address}")
@@ -235,7 +237,7 @@ class Layer2(LayerN):
         # Get the primary key and the target node's signature of it.
         primary_key_their_signature = bytes.fromhex(request["signed_primary_key"])
         primary_key = self._route.nodes[-1].e2e_primary_key
-        target_certificate = self._layer4._cached_certificates[self._route.nodes[-1].identifier]
+        target_certificate = self._stack._layer4._cached_certificates[self._route.nodes[-1].identifier]
         target_static_public_key = target_certificate.public_key
 
         # Verify the signature of the hashed primary key.
@@ -263,7 +265,7 @@ class Layer2(LayerN):
         route_token = bytes.fromhex(request["route_token"])
 
         # Determine the connection object and tunnel key.
-        connection = self._layer4._conversations[token]
+        connection = self._stack._layer4._conversations[token]
 
         # If this is the client node, then forwarding a message requires adding all 3 layers of encryption.
         if "self" in request.keys():
@@ -273,7 +275,7 @@ class Layer2(LayerN):
                 request = {
                     "command": Layer2Protocol.ForwardMessage.value,
                     "data": SymmetricEncryption.encrypt(data=dumped_req, key=tunnel_key).hex()}
-            self._send(self._layer4._conversations[self._route.entry_token], request)
+            self._send(self._stack._layer4._conversations[self._route.entry_token], request)
 
         # If the client node is receiving a tunneled message, remove all 3 layers of encryption.
         elif token == self._route.entry_token:
@@ -292,7 +294,7 @@ class Layer2(LayerN):
 
             # Get the next node's token, and send the request to connection to it.
             next_node_token = self._route_forward_token_map[token]
-            next_node_connection = self._layer4._conversations[next_node_token]
+            next_node_connection = self._stack._layer4._conversations[next_node_token]
             self._send(next_node_connection, request)
 
         # For the reverse direction, add a layer of encryption and send the request to the previous node.
@@ -301,15 +303,32 @@ class Layer2(LayerN):
             tunnel_key = self._tunnel_keys[route_token].primary_key
             dumped_data = SafeJson.dumps(request)
             request = {
-                "command": Layer2Protocol.ForwardData.value,
+                "command": Layer2Protocol.ForwardMessage.value,
                 "data": SymmetricEncryption.encrypt(data=dumped_data, key=tunnel_key).hex()}
 
             # Get the previous node's token, and send the request to connection to it.
             prev_node_token = self._route_reverse_token_map[token]
-            prev_node_connection = self._layer4._conversations[prev_node_token]
+            prev_node_connection = self._stack._layer4._conversations[prev_node_token]
             self._send(prev_node_connection, request)
 
-    def _handle_forward_data(self, address: IPv6Address, request: Json) -> None:
+    def _handle_internet_send(self, address: IPv6Address, request: Json) -> None:
+        # Get the route token from the request.
+        route_token = bytes.fromhex(request["route_token"])
+
+        # Create a (temporary) target TCP socket and send the HTTP request.
+        target_socket = Socket()
+        target_socket.connect((request["target_address"], request["target_port"]))
+        target_socket.sendall(bytes.fromhex(request["http_request"]))
+
+        # Receive the HTTP response and tunnel it backwards.
+        response = target_socket.recv(4096)
+        self._tunnel_message_backwards(route_token, {
+            "command": Layer2Protocol.InternetRecv.value,
+            "data": response.hex(),
+            "response_id": request["request_id"]})
+
+    def _handle_internet_recv(self, address: IPv6Address, request: Json) -> None:
+        # Push the response upto Layer 1.
         ...
 
     def _tunnel_message_forwards(self, request: Json) -> None:
@@ -321,8 +340,7 @@ class Layer2(LayerN):
 
         The message is then sent to the next node, who decrypts the message and forwards it to the next node. This
         process is repeated until the message reaches the final node. The final node will then process the message,
-        which may involve sending data to the Internet. Data can be tunneled backwards, by a node sending a "FORWARD"
-        command to itself, in the backwards direction.
+        which may involve sending data to the Internet.
 
         Arguments
             request: The message to tunnel forwards.
@@ -331,5 +349,13 @@ class Layer2(LayerN):
         wrapped_request = {
             "command": Layer2Protocol.ForwardMessage.value,
             "data": SafeJson.dumps(request)}
+
+        self._send(self._self_connection, wrapped_request)
+
+    def _tunnel_message_backwards(self, route_token: Bytes, request: Json) -> None:
+        wrapped_request = {
+            "command": Layer2Protocol.ForwardMessage.value,
+            "data": SafeJson.dumps(request),
+            "route_token": route_token.hex()}
 
         self._send(self._self_connection, wrapped_request)
