@@ -1,14 +1,12 @@
 from __future__ import annotations
-from typing import Optional as _Optional, Callable as _Callable
+from typing import Optional, Callable
 
 type Bool = bool
 type Bytes = bytes
-type Callable = _Callable
 type Dict[K, V] = dict[K, V]
 type Float = float
 type Int = int
 type List[T] = list[T]
-type Optional[T] = _Optional[T]
 type Set[T] = set[T]
 type Str = str
 type Tuple[*Ts] = tuple[Ts]
