@@ -4,8 +4,7 @@ from ipaddress import IPv6Address
 from socket import socket as Socket, SOCK_STREAM
 from threading import Thread
 
-from SNetwork.CommStack2.CommunicationStack import CommunicationStack
-from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.Config import LAYER_1_PORT
 from SNetwork.Utils.Types import Int, Json
 from SNetwork.Utils.HttpParser import HttpParser
@@ -17,11 +16,11 @@ class Layer1Protocol(LayerNProtocol, Enum):
 
 
 class Layer1(LayerN):
-    _selectable_dict: SelectableDict[Int, Json]
+    _selectable_dict: SelectableDict[Int]
 
-    def __init__(self, stack: CommunicationStack):
+    def __init__(self, stack) -> None:
         super().__init__(stack, SOCK_STREAM)
-        self._selectable_dict = SelectableDict[Int, Json]()
+        self._selectable_dict = SelectableDict[Int]()
 
     def _listen(self) -> None:
         while True:

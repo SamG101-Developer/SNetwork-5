@@ -9,9 +9,8 @@ from enum import Enum
 from ipaddress import IPv6Address
 from threading import Lock, Thread
 
-from SNetwork.CommStack2.CommunicationStack import CommunicationStack
-from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.CommStack2.Layer4 import Layer4, Layer4Protocol
+from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Layer4 import Layer4, Layer4Protocol
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
@@ -92,7 +91,7 @@ class Layer3(LayerN):
     _stored_keys: List[Bytes]
     _node_lookup_requests: Dict[Bytes, NodeLookupRequest]
 
-    def __init__(self, stack: CommunicationStack) -> None:
+    def __init__(self, stack) -> None:
         super().__init__(stack)
 
         # Store this node's identifier.

@@ -8,7 +8,6 @@ from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread, Lock
 
-from SNetwork.CommStack2.CommunicationStack import CommunicationStack
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple
 from SNetwork.Utils.Json import SafeJson

@@ -8,8 +8,7 @@ from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket
 
-from SNetwork.CommStack2.CommunicationStack import CommunicationStack
-from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.Config import LAYER_2_PORT
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Crypt.KEM import KEM
@@ -66,7 +65,7 @@ class Layer2(LayerN):
     _route_reverse_token_map: Dict[Bytes, Bytes]  # Connection Token => Connection Token
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]     # Route ID => Tunnel Key Group
 
-    def __init__(self, stack: CommunicationStack) -> None:
+    def __init__(self, stack) -> None:
         super().__init__(stack)
 
     def _listen(self) -> None:

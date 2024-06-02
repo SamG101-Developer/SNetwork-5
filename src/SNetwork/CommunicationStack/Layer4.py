@@ -9,8 +9,7 @@ from enum import Enum
 from ipaddress import IPv6Address
 from threading import Thread
 
-from SNetwork.CommStack2.CommunicationStack import CommunicationStack
-from SNetwork.CommStack2.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
 from SNetwork.Crypt.KEM import KEM
@@ -67,7 +66,7 @@ class Layer4(LayerN):
     _conversations: Dict[Bytes, Connection]
     _cached_certificates: Dict[Bytes, X509Certificate]
 
-    def __init__(self, stack: CommunicationStack) -> None:
+    def __init__(self, stack) -> None:
         super().__init__(stack)
 
         # Get the node identifier and static secret key.

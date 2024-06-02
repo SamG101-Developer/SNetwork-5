@@ -1,7 +1,7 @@
-from SNetwork.CommStack2.Layer1 import Layer1
-from SNetwork.CommStack2.Layer2 import Layer2
-from SNetwork.CommStack2.Layer3 import Layer3
-from SNetwork.CommStack2.Layer4 import Layer4
+from SNetwork.CommunicationStack.Layer1 import Layer1
+from SNetwork.CommunicationStack.Layer2 import Layer2
+from SNetwork.CommunicationStack.Layer3 import Layer3
+from SNetwork.CommunicationStack.Layer4 import Layer4
 
 
 class CommunicationStack:
