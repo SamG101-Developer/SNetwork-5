@@ -1,12 +1,15 @@
+import logging
+import secrets
 import select
 from enum import Enum
 from ipaddress import IPv6Address
-from socket import socket as Socket, SOCK_STREAM
+from socket import socket as Socket, AF_INET, AF_INET6, SOCK_STREAM
 from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.Config import LAYER_1_PORT
-from SNetwork.Utils.Types import Int, Json
+from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
+from SNetwork.Config import LAYER_1_PORT, LOCAL_HOST
+from SNetwork.Utils.Types import Int, Json, Bytes, Callable
 from SNetwork.Utils.HttpParser import HttpParser
 from SNetwork.Utils.SelectableDict import SelectableDict, Selectable
 
@@ -16,69 +19,112 @@ class Layer1Protocol(LayerNProtocol, Enum):
 
 
 class Layer1(LayerN):
-    _selectable_dict: SelectableDict[Int]
+    """
+    The "_socket" is the proxy socket, which receives incoming data from the client. The "_target_sockets" are the
+    sockets that are maintained as an exit node that exchange data with the client.
 
-    def __init__(self, stack) -> None:
-        super().__init__(stack, SOCK_STREAM)
-        self._selectable_dict = SelectableDict[Int]()
+    Attributes
+        _incoming_dict: A dictionary for the client that holds responses from the route.
+        _outgoing_dict: A dictionary for the exit node that holds requests from the client.
+    """
+
+    _incoming_dict: SelectableDict[Bytes]
+    _outgoing_dict: SelectableDict[Bytes]
+
+    def __init__(self) -> None:
+        super().__init__(SOCK_STREAM)
+        self._incoming_dict = SelectableDict[Bytes]()
+        self._outgoing_dict = SelectableDict[Bytes]()
+
+        # Bind the socket to the localhost, and listen for incoming connections.
+        self._socket.bind((LOCAL_HOST, self._port))
+        self._socket.listen(20)
+
+        # Start listening on the socket for this layer.
+        Thread(target=self._listen).start()
+        logging.debug("Layer 4 Ready")
+
+    @cross_isolation(2)
+    def open_tcp_connection_for_client(self, request: Json) -> None:
+        self._handle_target(request)
+        
+    @cross_isolation(2)
+    def store_data_sent_to_the_internet(self, request: Json) -> None:
+        socket_id = request["socket_id"]
+        self._outgoing_dict[socket_id] = bytes.fromhex(request["data"])
+        
+    @cross_isolation(2)
+    def store_data_recv_from_the_internet(self, request: Json) -> None:
+        socket_id = request["socket_id"]
+        self._incoming_dict[socket_id] = bytes.fromhex(request["data"])
 
     def _listen(self) -> None:
+        # Listen on the proxy localhost socket (port 50000).
         while True:
             client_socket, _ = self._socket.accept()
             Thread(target=self._handle_client, args=(client_socket, )).start()
 
-    def _handle_client(self, client_socket: Socket) -> None:
-        # Receive the CONNECT request, and extract the host.
-        data = client_socket.recv(1024)
-        host = HttpParser(data).headers[b"Host"].decode()
+    @strict_isolation
+    def _handle_target(self, request: Json) -> None:
+        # Create the socket to the internet, and connect to the host.
+        internet_socket = Socket(AF_INET if request["type"] == "ipv4" else AF_INET6, SOCK_STREAM)
+        internet_socket.connect((request["host"], request["port"]))
+        internet_socket.setblocking(False)
+        socket_id = request["socket_id"]
 
-        # Get the target key from the dictionary.
-        unique_id = len(self._selectable_dict) + 1
-
-        # Get the unfilled Selectable and send a connection established response.
-        target_getter = self._selectable_dict[unique_id]
-        client_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        # Save the connection to the target socket.
+        internet_recv_buffer = self._outgoing_dict[request["socket_id"]]
 
         # Set the sockets to non-blocking mode.
-        target_getter.setblocking(False)
-        client_socket.setblocking(False)
+        internet_recv_buffer.setblocking(False)
+        internet_socket.setblocking(False)
 
         # Handle data transfer between the client, and the target.
-        Thread(target=self._handle_data_transfer, args=(unique_id, client_socket, target_getter)).start()
+        tunnel_func = self._stack._layer2.tunnel_internet_response
+        args = (socket_id, internet_socket, internet_recv_buffer, tunnel_func)
+        Thread(target=self._handle_data_exchange, args=args).start()
 
-    def _handle_data_transfer(self, unique_id: Int, client_socket: Socket, target_getter: Selectable[Int]) -> None:
-        try:
-            # Store the sockets in a list, for the selection.
-            sockets = [client_socket, target_getter]
-            while True:
+    @strict_isolation
+    def _handle_client(self, client_proxy_socket: Socket) -> None:
+        # Receive the CONNECT request, and extract the host from the headers.
+        data = client_proxy_socket.recv(1024)
+        host = HttpParser(data).headers[b"Host"].decode()
+        socket_id = secrets.token_bytes(16)
 
-                # Get the readable and errored sockets.
-                readable, _, errored = select.select(sockets, [], sockets)
+        # Get the unfilled Selectable and send a connection established response.
+        route_recv_buffer = self._incoming_dict[socket_id]
+        client_proxy_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        self._stack._layer2.notify_exit_node_of_connection(host, socket_id)
 
-                # Receive data from the readable sockets, and send it to the other socket.
-                for sock in readable:  # todo: this isn't right (one needs to be set from layer 2, and one needs to send into layer 2)
-                    data = sock.recv(4096)
-                    if not data:
-                        break
-                    if sock is client_socket:
-                        target_getter.set_value(data)
-                    else:
-                        client_socket.sendall(data)
+        # Set the sockets to non-blocking mode.
+        route_recv_buffer.setblocking(False)
+        client_proxy_socket.setblocking(False)
 
-                # Remove and close any errored sockets (prevents trying to read from a closed socket).
-                for sock in errored:
-                    sockets.remove(sock)
-                    sock.close()
+        # Handle data transfer between the client, and the target.
+        tunnel_func = self._stack._layer2.tunnel_internet_reqeust
+        args = (socket_id, client_proxy_socket, route_recv_buffer, tunnel_func)
+        Thread(target=self._handle_data_exchange, args=args).start()
 
-        except ConnectionResetError:
-            # If there is an error, close the sockets and exit the thread. This would be done anyway, so the code is in
-            # the "finally" block.
-            ...
+    @strict_isolation
+    def _handle_data_exchange(self, socket_id: Bytes, socket: Socket, buffer: Selectable[Bytes], tunnel_func: Callable[[Bytes, Bytes], None]) -> None:
+        # Store the sockets in a list, for the selection.
+        sockets = [socket, buffer]
 
-        finally:
-            # Close the sockets.
-            client_socket.close()
-            target_getter.close()
+        while True:
+            # Get the readable and errored sockets.
+            readable, _, errored = select.select(sockets, [], sockets)
+
+            # Forward socket data into the route, and send dictionary-stored data to the client.
+            for sock in readable:
+                data = sock.recv(4096)
+                if not data: break
+                if sock is socket: tunnel_func(socket_id, data)
+                if sock is buffer: socket.sendall(data)
+
+            # Close the connection if an error occurs.
+            for sock in errored:
+                sockets.remove(sock)
+                sock.close()
 
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         pass
