@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import logging
 import secrets
 import time
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread, Lock
 
+from PyQt6.QtCore import QObject, pyqtSignal
+
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
-from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple
+from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple, Str
 from SNetwork.Utils.Json import SafeJson
 from SNetwork.Config import CONNECTION_TIMEOUT
 
@@ -40,6 +43,12 @@ class Connection:
     ephemeral_secret_key: Optional[SecKey]
     e2e_primary_key: Optional[Bytes]
 
+    def is_accepted(self) -> Bool:
+        return self.state.value == 0x03
+
+    def is_rejected(self) -> Bool:
+        return self.state.value == 0x04
+
 
 class LayerNProtocol:
     """
@@ -48,7 +57,7 @@ class LayerNProtocol:
     ...
 
 
-class LayerN(ABC):
+class LayerN(QObject):
     """
     Abstract class, which defines the structure of a network layer. Every method in this class is abstract and must be
     implemented by a subclass. The purpose of this class is to define a common interface for network layers. Each layer
@@ -70,18 +79,26 @@ class LayerN(ABC):
     _message_map_lock: Lock
     _stack: CommunicationStack
 
+    _status_update = pyqtSignal(str)       # increment (message)
+    _status_reset  = pyqtSignal(int, str)  # reset (number, message)
+
     def __init__(self, stack: CommunicationStack, socket_type: Int = SOCK_DGRAM):
         """
         The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
         data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
         isn't used is for the Layer1 proxy socket, which listens for TCP connections, to proxy the data out.
         """
+        super().__init__()
 
         # Initialize the layer's attributes.
         self._socket = Socket(AF_INET6, socket_type)
         self._message_map = {}
         self._message_map_lock = Lock()
         self._stack = stack
+
+        # Connect the status signal's to the logger
+        self._status_update.connect(lambda _1, _2, message: logging.debug(message))
+        self._status_reset.connect(lambda _1, _2, message: logging.warning(message))
 
         # Start the message map cleaner thread.
         Thread(target=self._clean_message_map).start()
