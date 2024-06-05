@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 
 from SNetwork.Gui2.MainWindow import Window
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
+from SNetwork.Gui2.RoutePopup import RoutePopup
 
 
 class Bridge:
@@ -13,18 +14,21 @@ class Bridge:
     _b: CommunicationStack
 
     _help_popup: Optional[QDialog]
+    _route_popup: Optional[RoutePopup]
 
     def __init__(self, f: Window, b: CommunicationStack) -> None:
         self._f = f
         self._b = b
         self._help_popup = None
 
+        self._route_popup = RoutePopup(self._f, hidden=True)
         self._create_help_popup()
 
     def _create_help_popup(self) -> None:
         self._help_popup = QDialog(self._f)
         self._help_popup.setWindowTitle("Help")
         self._help_popup.setFixedSize(640, 480)
+        self._b._layer2._status_update.connect(self._route_popup.status_update)
 
         text = """
         <h1>SNetwork</h1>
