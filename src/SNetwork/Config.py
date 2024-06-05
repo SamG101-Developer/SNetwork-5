@@ -8,6 +8,7 @@ LAYER_4_PORT = 40_004
 
 # Connection related constants.
 CONNECTION_TIMEOUT = 5
+HOP_COUNT = 3
 
 # Socket error codes.
 SOCKET_JSON_ERROR = {
@@ -19,6 +20,7 @@ SOCKET_JSON_ERROR = {
 DIRECTORY_IP = IPv6Address("fe80::7c7b:e49b:8cd:dc22")
 DEFAULT_IPV6 = "::"
 LOOPBACK_IPV6 = "::1"
+LOCAL_HOST = "localhost"
 
 # Default values for the DHT.
 DHT_KEY_LENGTH = 32
