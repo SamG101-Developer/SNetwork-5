@@ -10,6 +10,7 @@ from ipaddress import IPv6Address
 from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
 from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
 from SNetwork.Crypt.KEM import KEM
@@ -78,7 +79,7 @@ class Layer4(LayerN):
         self._challenges = []
         self._conversations = {}
 
-        # Start listening on both sockets.
+        # Start listening on the socket for this layer.
         Thread(target=self._listen).start()
         logging.debug("Layer 4 Ready")
 
@@ -92,6 +93,12 @@ class Layer4(LayerN):
             request = SafeJson.loads(data)  # , lambda: self._socket.sendto(SOCKET_JSON_ERROR, (address[0], self._port)))
             request and Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
+    @property
+    def _port(self) -> Int:
+        # Get the port from the configuration.
+        return LAYER_4_PORT
+
+    @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         # Check the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
@@ -117,16 +124,13 @@ class Layer4(LayerN):
                 logging.error(f"Invalid command: {request['command']}")
                 logging.error(f"Conversation state: {self._conversations[token].state}")
 
+    @strict_isolation
     def _send(self, connection: Connection, data: Json) -> None:
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, data)
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
-    @property
-    def _port(self) -> Int:
-        # Get the port from the configuration.
-        return LAYER_4_PORT
-
+    @cross_isolation(4)
     def connect(self, address: IPv6Address, that_identifier: Bytes) -> Optional[Connection]:
         """
         The "connect" method is called to create a UDP connection to another node in the network. This method handles
@@ -170,8 +174,9 @@ class Layer4(LayerN):
         # Wait for the connection to be accepted, rejected or closed, and return a value accordingly.
         while connection.state not in {Layer4Protocol.AcceptConnection, Layer4Protocol.RejectConnection, Layer4Protocol.CloseConnection}:
             pass
-        return connection if connection.state == Layer4Protocol.AcceptConnection else None
+        return connection if connection.is_accepted() else None
 
+    @strict_isolation
     def _handle_connection_request(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received connection request from {address}")
 
@@ -224,6 +229,7 @@ class Layer4(LayerN):
             "command": Layer4Protocol.SignatureChallenge.value,
             "challenge": challenge.hex()})
 
+    @strict_isolation
     def _handle_signature_challenge(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received signature challenge from {address}")
 
@@ -260,6 +266,7 @@ class Layer4(LayerN):
             "command": Layer4Protocol.ChallengeResponse.value,
             "challenge_response": challenge_response.hex()})
 
+    @strict_isolation
     def _handle_challenge_response(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received challenge response from {address}")
 
@@ -307,6 +314,7 @@ class Layer4(LayerN):
             "command": Layer4Protocol.AcceptConnection.value,
             "kem_primary_key": kem_wrapped_primary_key.hex()})
 
+    @strict_isolation
     def _handle_accept_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received connection acceptance from {address}")
 
@@ -342,6 +350,7 @@ class Layer4(LayerN):
         connection.e2e_primary_key = primary_key
         connection.state = Layer4Protocol.AcceptConnection
 
+    @strict_isolation
     def _handle_reject_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received connection rejection from {address}")
 
@@ -350,6 +359,7 @@ class Layer4(LayerN):
         connection.state = Layer4Protocol.CloseConnection
         del self._conversations[connection.token]
 
+    @strict_isolation
     def _handle_close_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received connection close from {address}")
 

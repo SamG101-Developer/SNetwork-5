@@ -10,7 +10,7 @@ from ipaddress import IPv6Address
 from threading import Lock, Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
-from SNetwork.CommunicationStack.Layer4 import Layer4, Layer4Protocol
+from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
@@ -103,7 +103,7 @@ class Layer3(LayerN):
         self._stored_keys = []
         self._node_lookup_requests = {}
 
-        # Start listening on both sockets.
+        # Start listening on the socket for this layer.
         Thread(target=self._listen).start()
         logging.debug("Layer 3 Ready")
 
@@ -119,7 +119,7 @@ class Layer3(LayerN):
             token, encrypted_data = request["token"], request["data"]
 
             # Ensure the token represents a connection that both exists, and is in the accepted state.
-            if token in self._stack._layer4._conversations.keys() and self._stack._layer4._conversations[token].state == Layer4Protocol.AcceptConnection:
+            if token in self._stack._layer4._conversations.keys() and self._stack._layer4._conversations[token].is_accepted():
                 e2e_key = self._stack._layer4._conversations[token].e2e_primary_key
                 decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
                 decrypted_json = SafeJson.loads(decrypted_data)
@@ -130,6 +130,7 @@ class Layer3(LayerN):
                 logging.warning(f"Received request from unknown token {token}.")
                 continue
 
+    @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         # Check the request has a command and token.
         if "command" not in request or "token" not in request:
@@ -159,7 +160,7 @@ class Layer3(LayerN):
         # todo: move into shared function (with layer 2) - secure_send
 
         # Check the connection is in the accepted state.
-        if connection.state != Layer4Protocol.AcceptConnection:
+        if not connection.is_accepted():
             logging.error(f"Cannot send data to connection in state {connection.state}.")
             return
 

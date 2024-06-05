@@ -7,14 +7,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket
+from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Isolation import strict_isolation, cross_isolation
 from SNetwork.Config import LAYER_2_PORT
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Crypt.KEM import KEM
 from SNetwork.Crypt.Sign import Signer
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
-from SNetwork.Utils.Types import Int, Json, Bytes, Dict, Optional, List
+from SNetwork.Utils.Types import Int, Json, Bytes, Dict, Optional, List, Str
 from SNetwork.Utils.Json import SafeJson
 
 
@@ -55,22 +57,68 @@ class Layer2Protocol(LayerNProtocol, Enum):
     TunnelAccept = 0x04
     TunnelReject = 0x05
     ForwardMessage = 0x06
-    InternetSend = 0x07
-    InternetRecv = 0x08
+
+    InternetConn = 0x07
+    InternetSend = 0x08
+    InternetRecv = 0x09
 
 
 class Layer2(LayerN):
+    """
+    Layer 2 of the Communication Stack is the "Routing Layer". This layer is responsible for setting up and maintaining
+    the route between the client and the exit node. The client is the node that sends data to the exit node, and the
+    exit node is the node that sends data to the Internet.
+
+    The entry, intermediary and exit nodes are all connected to each other via Layer 4 connections. The client is
+    exchanges tunnel keys with each node in the route.
+
+    Attributes:
+        _route: The current route between the client and the exit node.
+        _route_forward_token_map: A mapping of connection tokens to the next node's connection token.
+        _route_reverse_token_map: A mapping of connection tokens to the previous node's connection token.
+        _tunnel_keys: A mapping of route tokens to tunnel keys.
+
+    Methods:
+        create_route: Creates a new route between the client and the exit node.
+        forward_internet_data: Forwards data to the Internet.
+        _handle_extend_connection: Handles a request to extend a connection for a route.
+        _handle_tunnel_request: Handles a request to become part of the route.
+        _handle_tunnel_ephemeral_key: Handles the ephemeral public key of the new candidate node for the route.
+        _handle_tunnel_primary_key: Handles a wrapped primary key from the client.
+        _handle_tunnel_accept: Handles the candidate node's acceptance of the route.
+        _handle_tunnel_reject: Handles the candidate node's rejection of the route.
+        _handle_forward_message: Handles a request to tunnel a message forwards.
+        _handle_internet_send: Handles a request to tunnel data to the Internet.
+        _handle_internet_recv: Handles a request to tunnel data from the Internet.
+        _tunnel_message_forwards: Tunnels a message forwards (+ message prep).
+        _tunnel_message_backwards: Tunnels a message backwards (+ message prep).
+    """
+
     _route: Optional[Route]
     _route_forward_token_map: Dict[Bytes, Bytes]  # Connection Token => Connection Token
     _route_reverse_token_map: Dict[Bytes, Bytes]  # Connection Token => Connection Token
     _tunnel_keys: Dict[Bytes, TunnelKeyGroup]     # Route ID => Tunnel Key Group
 
+    ROUTING_STATUS_MESSAGES: List[Str] = [
+        "Selected node %s as the next node in the route.",
+        "Sending connection extension to current final node."
+        "Received ephemeral key from candidate node.",
+        "Authenticating ephemeral key and challenge",
+        "Wrapped primary key for candidate node.",
+        "Tunnel accepted from candidate node.",
+    ]
+
     def __init__(self, stack) -> None:
         super().__init__(stack)
+
+        # Start listening on the socket for this layer.
+        Thread(target=self._listen).start()
+        logging.debug("Layer 2 Ready")
 
     def _listen(self) -> None:
         pass
 
+    @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         # Check the request has a command and token.
         if "command" not in request or "token" not in request:
@@ -110,15 +158,18 @@ class Layer2(LayerN):
     def create_route(self) -> None:
         ...
 
-    def forward_internet_data(self, data: Bytes) -> None:
+    @cross_isolation(1)
+    def tunnel_internet_request(self, data: Bytes) -> None:
         request = {
             "command": Layer2Protocol.InternetSend.value,
             "data": lzma.compress(data).hex()}
 
         self._tunnel_message_forwards(request)
 
+    @strict_isolation
     def _handle_extend_connection(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Extending a connection to {address}")
+        self._status_update.emit(f"Extending a connection to {address}")
 
         # Get the target address and identifier.
         target_address = IPv6Address(request["target_address"])
@@ -140,9 +191,9 @@ class Layer2(LayerN):
             self._tunnel_message_backwards(route_token, {
                 "command": Layer2Protocol.TunnelReject.value,
                 "route_token": request["route_token"],
-                "challenge": request["challenge"]
-            })
+                "challenge": request["challenge"]})
 
+    @strict_isolation
     def _handle_tunnel_request(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel request from {address}")
 
@@ -168,6 +219,7 @@ class Layer2(LayerN):
             "signature": signature.hex(),
         })
 
+    @strict_isolation
     def _handle_tunnel_ephemeral_key(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel ephemeral key from {address}")
 
@@ -201,9 +253,9 @@ class Layer2(LayerN):
         self._tunnel_message_forwards({
             "command": Layer2Protocol.TunnelPrimaryKey.value,
             "route_token": self._route.route_token.hex(),
-            "wrapped_primary_key": wrapped_primary_key.hex(),
-        })
+            "wrapped_primary_key": wrapped_primary_key.hex()})
 
+    @strict_isolation
     def _handle_tunnel_primary_key(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel primary key from {address}")
 
@@ -230,6 +282,7 @@ class Layer2(LayerN):
             "route_token": route_token.hex(),
             "signed_primary_key": signed_primary_key.hex()})
 
+    @strict_isolation
     def _handle_tunnel_accept(self, address: IPv6Address, request: Json) -> None:
         logging.debug(f"Received a tunnel accept from {address}")
 
@@ -254,10 +307,12 @@ class Layer2(LayerN):
         # Mark the target node as accepted.
         self._route.nodes[-1].state = RouteNodeState.Accepted
 
+    @strict_isolation
     def _handle_tunnel_reject(self, address: IPv6Address, request: Json) -> None:
         # Mark the pending node as rejected, so the initial loop can continue.
         self._route.nodes[-1].state = RouteNodeState.Rejected
 
+    @strict_isolation
     def _handle_forward_message(self, address: IPv6Address, request: Json) -> None:
         # Get the connection token and route token from the request.
         token = bytes.fromhex(request["token"])
@@ -310,6 +365,7 @@ class Layer2(LayerN):
             prev_node_connection = self._stack._layer4._conversations[prev_node_token]
             self._send(prev_node_connection, request)
 
+    @strict_isolation
     def _handle_internet_send(self, address: IPv6Address, request: Json) -> None:
         # Get the route token from the request.
         route_token = bytes.fromhex(request["route_token"])
@@ -326,10 +382,12 @@ class Layer2(LayerN):
             "data": response.hex(),
             "response_id": request["request_id"]})
 
+    @strict_isolation
     def _handle_internet_recv(self, address: IPv6Address, request: Json) -> None:
         # Push the response upto Layer 1.
         ...
 
+    @strict_isolation
     def _tunnel_message_forwards(self, request: Json) -> None:
         """
         Only the client ever tunnels a message forwards. This is because the client is the only node who knows all the
@@ -351,6 +409,7 @@ class Layer2(LayerN):
 
         self._send(self._self_connection, wrapped_request)
 
+    @strict_isolation
     def _tunnel_message_backwards(self, route_token: Bytes, request: Json) -> None:
         wrapped_request = {
             "command": Layer2Protocol.ForwardMessage.value,
