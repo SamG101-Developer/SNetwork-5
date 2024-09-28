@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QApplication
 import logging, os, sys
 import nest_asyncio
 
-from src.Gui.MainWindow import MainWindow
+from SNetwork.Gui2.MainWindow import Window
 
 
 nest_asyncio.apply()
@@ -20,7 +20,7 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
     sys.excepthook = custom_excepthook
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = Window()
     sys.exit(app.exec())
 
 
