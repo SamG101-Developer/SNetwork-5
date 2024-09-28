@@ -2,7 +2,6 @@ from typing import Optional
 
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
-from PyQt6.QtCore import Qt
 
 from SNetwork.Gui2.MainWindow import Window
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -21,14 +20,15 @@ class Bridge:
         self._b = b
         self._help_popup = None
 
-        self._route_popup = RoutePopup(self._f, hidden=True)
+        self._route_popup = RoutePopup(self._f)
+        self._route_popup.hide()
         self._create_help_popup()
 
     def _create_help_popup(self) -> None:
         self._help_popup = QDialog(self._f)
         self._help_popup.setWindowTitle("Help")
         self._help_popup.setFixedSize(640, 480)
-        self._b._layer2._status_update.connect(self._route_popup.status_update)
+        # self._b._layer2._status_update.connect(self._route_popup.status_update)
 
         text = """
         <h1>SNetwork</h1>
@@ -70,6 +70,10 @@ class Bridge:
         self._f._s_net_button.setEnabled(False)
         self._f._s_drive_button.setEnabled(False)
         self._f._s_mail_button.setEnabled(False)
+
+    def launch_directory_service(self) -> None:
+        self._f._launch_directory_service_button.setEnabled(False)
+        self._f._create_route_button.setEnabled(False)
 
     def help(self) -> None:
         self._help_popup.show()

@@ -62,6 +62,10 @@ class Button(Widget):
     # def heightForWidth(self, width: int) -> int:
     #     return width
 
+    def setEnabled(self, a0):
+        if not self._coming_soon:
+            super().setEnabled(a0)
+
     def paintEvent(self, event: QPaintEvent) -> None:
         if self.isEnabled():
             super().paintEvent(event)
@@ -95,8 +99,8 @@ class Button(Widget):
             painter = QPainter(self)
             font = QFont("Jetbrains Mono", 11, QFont.Weight.Bold)
             painter.setFont(font)
-            painter.setTransform(QTransform().translate(self.width() * 0.5, self.height() * -0.5).rotate(45))
             painter.setPen(QPen(QColor(240, 240, 240)))
+            painter.setTransform(QTransform().translate(self.width() * 0.5, self.height() * -0.5).rotate(45))
             painter.drawText(QRectF(self.width() * 0.5, 0, self.width() * 0.5, self.height() * 0.5), Qt.AlignmentFlag.AlignCenter, "Coming Soon")
             painter.end()
 
@@ -114,6 +118,7 @@ class Window(QWidget):
     def _make_buttons(self) -> None:
         self._create_route_button = Button(self, text="Create Route", clicked=self._bridge.create_route)
         self._stop_route_button = Button(self, text="Stop Route", enabled=False, clicked=self._bridge.stop_route)
+        self._launch_directory_service_button = Button(self, text="Launch Directory Service", enabled=True, clicked=self._bridge.launch_directory_service)
         self._help_button = Button(self, text="Help", clicked=self._bridge.help)
         self._configure_button = Button(self, text="Configure", enabled=False, coming_soon=True)
         self._browse_hs_button = Button(self, text="Browse HS", enabled=False, coming_soon=True)
@@ -129,9 +134,10 @@ class Window(QWidget):
 
         layout.addWidget(self._create_route_button, 0, 0)
         layout.addWidget(self._stop_route_button, 0, 1)
-        layout.addWidget(self._help_button, 0, 2)
-        layout.addWidget(self._configure_button, 0, 3)
-        layout.addWidget(self._browse_hs_button, 0, 4)
+        layout.addWidget(self._launch_directory_service_button, 0, 2)
+        layout.addWidget(self._help_button, 0, 3)
+        layout.addWidget(self._configure_button, 0, 4)
+        layout.addWidget(self._browse_hs_button, 0, 5)
         layout.addWidget(self._s_mail_button, 1, 0)
         layout.addWidget(self._s_message_button, 1, 1)
         layout.addWidget(self._s_drive_button, 1, 2)
