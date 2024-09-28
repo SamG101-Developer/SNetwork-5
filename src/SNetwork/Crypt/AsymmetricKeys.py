@@ -46,10 +46,10 @@ class PubKey:
     def from_pem(pem: Bytes) -> PubKey:
         return PubKey(load_pem_public_key(pem))
 
-    def verify(self, data: Bytes, signature: Bytes, padding: AsymmetricPadding, algorithm: HashAlgorithm) -> None:
+    def _internal_verify(self, data: Bytes, signature: Bytes, padding: AsymmetricPadding, algorithm: HashAlgorithm) -> None:
         self._public_key.verify(signature, data, padding, algorithm)
 
-    def encrypt(self, plaintext: Bytes, padding: AsymmetricPadding) -> Bytes:
+    def _internal_encrypt(self, plaintext: Bytes, padding: AsymmetricPadding) -> Bytes:
         return self._public_key.encrypt(plaintext, padding)
 
 
@@ -64,8 +64,8 @@ class SecKey:
         return self._secret_key.private_bytes(encoding=Encoding.DER, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption())
 
     @property
-    def pem(self) -> Str:
-        return self._secret_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption()).decode()
+    def pem(self) -> Bytes:
+        return self._secret_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8, encryption_algorithm=NoEncryption())
 
     @staticmethod
     def from_der(der: Bytes) -> SecKey:
@@ -78,10 +78,10 @@ class SecKey:
     def pub_key(self) -> PubKey:
         return PubKey(self._secret_key.public_key())
 
-    def sign(self, data: Bytes, padding: AsymmetricPadding, algorithm: HashAlgorithm) -> Bytes:
+    def _internal_sign(self, data: Bytes, padding: AsymmetricPadding, algorithm: HashAlgorithm) -> Bytes:
         return self._secret_key.sign(data, padding, algorithm)
 
-    def decrypt(self, ciphertext: Bytes, padding: AsymmetricPadding) -> Bytes:
+    def _internal_decrypt(self, ciphertext: Bytes, padding: AsymmetricPadding) -> Bytes:
         return self._secret_key.decrypt(ciphertext, padding)
 
 

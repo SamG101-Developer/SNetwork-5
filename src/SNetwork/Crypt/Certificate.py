@@ -72,5 +72,13 @@ class X509CertificateSigningRequest:
     def from_pem(pem: Bytes) -> X509CertificateSigningRequest:
         return X509CertificateSigningRequest(x509.load_pem_x509_csr(pem))
 
+    @property
+    def der(self) -> Bytes:
+        return self._request.public_bytes(Encoding.DER)
+
+    @property
+    def pem(self) -> Bytes:
+        return self._request.public_bytes(Encoding.PEM)
+
 
 __all__ = ["X509Certificate", "X509CertificateSigningRequest"]
