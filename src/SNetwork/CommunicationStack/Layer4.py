@@ -72,8 +72,8 @@ class Layer4(LayerN):
 
         # Get the node identifier and static secret key.
         while not os.path.exists("_crypt/secret_key.pem"): pass
-        self._this_identifier = KeyManager.get_identifier()
-        self._this_static_secret_key = KeyManager.get_static_secret_key()
+        self._this_identifier = KeyManager.get_info()["identifier"]
+        self._this_static_secret_key = KeyManager.get_info()["secret_key"]
 
         # Store the DHT node and conversation state.
         self._challenges = []
@@ -93,20 +93,15 @@ class Layer4(LayerN):
             request = SafeJson.loads(data)  # , lambda: self._socket.sendto(SOCKET_JSON_ERROR, (address[0], self._port)))
             request and Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
-    @property
-    def _port(self) -> Int:
-        # Get the port from the configuration.
-        return LAYER_4_PORT
-
     @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         # Check the request has a command and token, and parse the token.
         if "command" not in request or "token" not in request:
             logging.error(f"Invalid request: {request}")
             return
-        token = bytes.fromhex(request["token"])
 
         # Match the command to the appropriate handler.
+        token = bytes.fromhex(request["token"])
         match request["command"]:
             case Layer4Protocol.RequestConnection.value:
                 self._handle_connection_request(address, request)
@@ -129,6 +124,11 @@ class Layer4(LayerN):
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, data)
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
+
+    @property
+    def _port(self) -> Int:
+        # Get the port from the configuration.
+        return LAYER_4_PORT
 
     @cross_isolation(4)
     def connect(self, address: IPv6Address, that_identifier: Bytes) -> Optional[Connection]:
@@ -215,9 +215,9 @@ class Layer4(LayerN):
                 "reason": "Invalid ephemeral public key signature."})
             return
 
-        # Send a signed challenge for the requesting node to sign, to ensure that it has the private key.
+        # Create a challenge for the requesting node to sign, to ensure that it has the private key, and sign it.
         challenge = secrets.token_bytes(24) + struct.pack("!d", time.time())
-        challenge_signed = Signer.sign(
+        signed_challenge = Signer.sign(
             my_static_secret_key=self._this_static_secret_key,
             message=challenge,
             their_id=that_identifier)
@@ -278,7 +278,7 @@ class Layer4(LayerN):
         that_identifier = connection.identifier
         that_static_public_key = self._cached_certificates[that_identifier].public_key
 
-        # Extract the challenge and the challenge-response from the data.
+        # Extract the challenge-response from the data, and the challenge from the connection cache.
         challenge = connection.challenge
         challenge_response = bytes.fromhex(request["challenge_response"])
 
@@ -297,22 +297,22 @@ class Layer4(LayerN):
 
         # Create a primary key, and sign it with the static secret key.
         primary_key = secrets.token_bytes(32)
-        kem_wrapped_primary_key_signed = Signer.sign(
+        signed_primary_key = Signer.sign(
             my_static_secret_key=self._this_static_secret_key,
             message=primary_key,
             their_id=that_identifier)
 
         # Wrap the primary key and its signature inside the KEM.
-        kem_wrapped_primary_key = KEM.kem_wrap(
+        kem_wrapped_signed_primary_key = KEM.kem_wrap(
             their_ephemeral_public_key=connection.ephemeral_public_key,
-            decapsulated_key=primary_key + kem_wrapped_primary_key_signed).encapsulated
+            decapsulated_key=primary_key + signed_primary_key).encapsulated
 
         # Send the request and update the connection information.
         connection.state = Layer4Protocol.AcceptConnection
         connection.e2e_primary_key = primary_key
         self._send(connection, {
             "command": Layer4Protocol.AcceptConnection.value,
-            "kem_primary_key": kem_wrapped_primary_key.hex()})
+            "kem_primary_key": kem_wrapped_signed_primary_key.hex()})
 
     @strict_isolation
     def _handle_accept_connection(self, address: IPv6Address, request: Json) -> None:
@@ -327,10 +327,10 @@ class Layer4(LayerN):
         that_static_public_key = self._cached_certificates[that_identifier].public_key
 
         # Decapsulate the key to get the primary key and its signature.
-        kem_wrapped_primary_key = bytes.fromhex(request["kem_primary_key"])
+        kem_wrapped_signed_primary_key = bytes.fromhex(request["kem_primary_key"])
         primary_key_and_signature = KEM.kem_unwrap(
             my_ephemeral_secret_key=connection.ephemeral_secret_key,
-            encapsulated_key=kem_wrapped_primary_key)
+            encapsulated_key=kem_wrapped_signed_primary_key)
         primary_key, primary_key_signature = primary_key_and_signature.decapsulated[:32], primary_key_and_signature.decapsulated[32:]
 
         # Verify the signature on the kem wrapped primary key.

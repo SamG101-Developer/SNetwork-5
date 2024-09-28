@@ -173,6 +173,7 @@ class Layer3(LayerN):
         encoded_data = SafeJson.dumps({
             "token": connection.token,
             "data": encrypted_data})
+
         self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
 
     @property
@@ -382,8 +383,7 @@ class Layer3(LayerN):
         target_identifier = bytes.fromhex(request["target_node_identifier"])
         response = {
             "command": Layer3Protocol.FindNodeResponse.value,
-            "closest_nodes": self._closest_k_nodes_to(target_identifier),
-        }
+            "closest_nodes": self._closest_k_nodes_to(target_identifier)}
 
     def _handle_find_node_response(self, address: IPv6Address, request: Json) -> None:
         token = bytes.fromhex(request["token"])

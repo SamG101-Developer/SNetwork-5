@@ -4,7 +4,8 @@ import logging
 import secrets
 import time
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread, Lock
@@ -12,7 +13,7 @@ from threading import Thread, Lock
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
-from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple, Str
+from SNetwork.Utils.Types import Bytes, Json, Int, Optional, Dict, Float, Tuple, Bool
 from SNetwork.Utils.Json import SafeJson
 from SNetwork.Config import CONNECTION_TIMEOUT
 
@@ -37,11 +38,11 @@ class Connection:
     address: IPv6Address
     identifier: Bytes
     token: Bytes
-    state: LayerNProtocol
-    challenge: Optional[Bytes]
-    ephemeral_public_key: Optional[PubKey]
-    ephemeral_secret_key: Optional[SecKey]
-    e2e_primary_key: Optional[Bytes]
+    state: Optional[LayerNProtocol] = field(default=None)
+    challenge: Optional[Bytes] = field(default=None)
+    ephemeral_public_key: Optional[PubKey] = field(default=None)
+    ephemeral_secret_key: Optional[SecKey] = field(default=None)
+    e2e_primary_key: Optional[Bytes] = field(default=None)
 
     def is_accepted(self) -> Bool:
         return self.state.value == 0x03

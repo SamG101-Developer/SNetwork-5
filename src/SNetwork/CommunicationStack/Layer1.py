@@ -8,7 +8,7 @@ from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
-from SNetwork.Config import LAYER_1_PORT, LOCAL_HOST
+from SNetwork.Config import LAYER_1_PORT, LOCAL_HOST, MAX_TCP_LISTEN, HTTP_CONNECT_ESTABLISHED
 from SNetwork.Utils.Types import Int, Json, Bytes, Callable
 from SNetwork.Utils.HttpParser import HttpParser
 from SNetwork.Utils.SelectableDict import SelectableDict, Selectable
@@ -31,14 +31,14 @@ class Layer1(LayerN):
     _incoming_dict: SelectableDict[Bytes]
     _outgoing_dict: SelectableDict[Bytes]
 
-    def __init__(self) -> None:
-        super().__init__(SOCK_STREAM)
+    def __init__(self, stack) -> None:
+        super().__init__(stack, SOCK_STREAM)
         self._incoming_dict = SelectableDict[Bytes]()
         self._outgoing_dict = SelectableDict[Bytes]()
 
         # Bind the socket to the localhost, and listen for incoming connections.
         self._socket.bind((LOCAL_HOST, self._port))
-        self._socket.listen(20)
+        self._socket.listen(MAX_TCP_LISTEN)
 
         # Start listening on the socket for this layer.
         Thread(target=self._listen).start()
@@ -93,7 +93,7 @@ class Layer1(LayerN):
 
         # Get the unfilled Selectable and send a connection established response.
         route_recv_buffer = self._incoming_dict[socket_id]
-        client_proxy_socket.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        client_proxy_socket.sendall(HTTP_CONNECT_ESTABLISHED)
         self._stack._layer2.notify_exit_node_of_connection(host, socket_id)
 
         # Set the sockets to non-blocking mode.

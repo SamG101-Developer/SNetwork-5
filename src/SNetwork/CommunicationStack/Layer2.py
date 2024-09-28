@@ -183,8 +183,7 @@ class Layer2(LayerN):
         if extended_connection:
             self._send(extended_connection, {
                 "command": Layer2Protocol.TunnelRequest.value,
-                "route_token": request["route_token"],
-            })
+                "route_token": request["route_token"]})
 
         # Otherwise, the connection failed, so tunnel back to the target node.
         else:
@@ -202,22 +201,21 @@ class Layer2(LayerN):
         route_token = bytes.fromhex(request["route_token"])
 
         # Create an ephemeral public key.
-        tunnel_ephemeral_public_key_pair = KEM.generate_key_pair()
+        tunnel_ephemeral_key_pair = KEM.generate_key_pair()
 
         # Sign the challenge and ephemeral public key together and the challenge.
         challenge = bytes.fromhex(request["challenge"])
         signature = Signer.sign(
-            my_static_secret_key=self._stack._layer4._this_static_secret_key,
-            message=challenge + tunnel_ephemeral_public_key_pair.public_key.der,
+            my_static_secret_key=self._stack._layer4._this_static_key_pair,
+            message=challenge + tunnel_ephemeral_key_pair.public_key.der,
             their_id=self._stack._layer4._conversations[token].identifier)
-        self._tunnel_keys[route_token] = TunnelKeyGroup(ephemeral_secret_key=tunnel_ephemeral_public_key_pair.secret_key)
+        self._tunnel_keys[route_token] = TunnelKeyGroup(ephemeral_secret_key=tunnel_ephemeral_key_pair.secret_key)
 
         # Send the ephemeral public key and signature back to the target's current final node.
         self._tunnel_message_backwards(route_token, {
             "command": Layer2Protocol.TunnelEphemeralKey.value,
-            "ephemeral_public_key": tunnel_ephemeral_public_key_pair.public_key.der.hex(),
-            "signature": signature.hex(),
-        })
+            "ephemeral_public_key": tunnel_ephemeral_key_pair.public_key.der.hex(),
+            "signature": signature.hex()})
 
     @strict_isolation
     def _handle_tunnel_ephemeral_key(self, address: IPv6Address, request: Json) -> None:
@@ -273,7 +271,7 @@ class Layer2(LayerN):
 
         # Tunnel a signature of the hashed primary key back to the target for authentication.
         signed_primary_key = Signer.sign(
-            my_static_secret_key=self._stack._layer4._this_static_secret_key,
+            my_static_secret_key=self._stack._layer4._this_static_key_pair,
             message=primary_key,
             their_id=self._stack._layer4._conversations[route_token].identifier)
 
