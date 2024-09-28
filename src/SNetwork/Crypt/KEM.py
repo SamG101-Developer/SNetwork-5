@@ -22,7 +22,7 @@ class KEM:
     @staticmethod
     def kem_wrap(*, their_ephemeral_public_key: PubKey, decapsulated_key: Bytes) -> KEMKeyPair:
         # Encapsulate the key.
-        encapsulated_key = their_ephemeral_public_key.encrypt(
+        encapsulated_key = their_ephemeral_public_key._internal_encrypt(
             plaintext=decapsulated_key,
             padding=OAEP(
                 mgf=MGF1(HashAlgorithms.SHA2_256()),
@@ -35,7 +35,7 @@ class KEM:
     @staticmethod
     def kem_unwrap(*, my_ephemeral_secret_key: SecKey, encapsulated_key: Bytes) -> KEMKeyPair:
         # Decapsulate the key.
-        decapsulated_key = my_ephemeral_secret_key.decrypt(
+        decapsulated_key = my_ephemeral_secret_key._internal_decrypt(
             ciphertext=encapsulated_key,
             padding=OAEP(
                 mgf=MGF1(HashAlgorithms.SHA2_256()),

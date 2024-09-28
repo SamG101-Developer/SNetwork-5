@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.padding import PSS, MGF1
 from cryptography.exceptions import InvalidSignature
 
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey, KeyPair
-from SNetwork.Crypt.Hash import Hasher, HashAlgorithms
+from SNetwork.Crypt.Hash import HashAlgorithms
 from SNetwork.Utils.Types import Bytes, Bool
 
 
@@ -36,7 +36,7 @@ class Signer:
         message += struct.pack("!d", time.time())
 
         # Sign the hashed message.
-        signature = my_static_secret_key.sign(
+        signature = my_static_secret_key._internal_sign(
             data=message,
             padding=PSS(MGF1(HashAlgorithms.SHA3_224()), PSS.MAX_LENGTH),
             algorithm=HashAlgorithms.SHA3_224())
@@ -54,7 +54,7 @@ class Signer:
             assert candidate_id == target_id, f"Received Candidate ID '{candidate_id[:20]}...' != Target ID '{target_id[:20]}...'"
 
             # Verify the signature against the message.
-            their_static_public_key.verify(
+            their_static_public_key._internal_verify(
                 data=message,
                 signature=signature,
                 padding=PSS(MGF1(HashAlgorithms.SHA3_224()), PSS.MAX_LENGTH),
