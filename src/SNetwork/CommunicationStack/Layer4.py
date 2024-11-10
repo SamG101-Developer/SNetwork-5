@@ -11,13 +11,13 @@ from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
-from SNetwork.Config import LAYER_4_PORT, DEFAULT_IPV6
+from SNetwork.Config import PORT
 from SNetwork.Crypt.AsymmetricKeys import SecKey, PubKey
 from SNetwork.Crypt.KEM import KEM
-from SNetwork.Crypt.KeyManager import KeyManager
 from SNetwork.Crypt.Sign import Signer
 from SNetwork.Crypt.Certificate import X509Certificate
-from SNetwork.Utils.Json import SafeJson
+from SNetwork.Managers.KeyManager import KeyManager
+from SNetwork.Managers.ProfileManager import ProfileManager
 from SNetwork.Utils.Types import Bytes, Optional, Dict, List, Json, Int
 
 
@@ -67,31 +67,18 @@ class Layer4(LayerN):
     _conversations: Dict[Bytes, Connection]
     _cached_certificates: Dict[Bytes, X509Certificate]
 
-    def __init__(self, stack) -> None:
-        super().__init__(stack)
+    def __init__(self, stack, socket) -> None:
+        super().__init__(stack, socket)
 
         # Get the node identifier and static secret key.
         while not os.path.exists("_crypt/secret_key.pem"): pass
-        self._this_identifier = KeyManager.get_info()["identifier"]
-        self._this_static_secret_key = KeyManager.get_info()["secret_key"]
+        self._this_identifier = KeyManager.get_info(ProfileManager.CURRENT_HASHED_USERNAME)["identifier"]
+        self._this_static_secret_key = KeyManager.get_info(ProfileManager.CURRENT_HASHED_USERNAME)["secret_key"]
 
         # Store the DHT node and conversation state.
         self._challenges = []
         self._conversations = {}
-
-        # Start listening on the socket for this layer.
-        Thread(target=self._listen).start()
         logging.debug("Layer 4 Ready")
-
-    def _listen(self) -> None:
-        # Bind the insecure socket to port 40000.
-        self._socket.bind((DEFAULT_IPV6, self._port))
-
-        # Listen for incoming raw requests, and handle them in a new thread.
-        while True:
-            data, address = self._socket.recvfrom(4096)
-            request = SafeJson.loads(data)  # , lambda: self._socket.sendto(SOCKET_JSON_ERROR, (address[0], self._port)))
-            request and Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
     @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
@@ -123,12 +110,7 @@ class Layer4(LayerN):
     def _send(self, connection: Connection, data: Json) -> None:
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, data)
-        self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
-
-    @property
-    def _port(self) -> Int:
-        # Get the port from the configuration.
-        return LAYER_4_PORT
+        self._socket.sendto(encoded_data, (connection.address.exploded, PORT))
 
     @cross_isolation(4)
     def connect(self, address: IPv6Address, that_identifier: Bytes) -> Optional[Connection]:

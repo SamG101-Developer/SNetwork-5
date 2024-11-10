@@ -5,7 +5,6 @@ import secrets
 import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET6, SOCK_DGRAM
 from threading import Thread, Lock
@@ -75,15 +74,15 @@ class LayerN(QObject):
         _port: The port number used by the layer.
     """
 
-    _socket: Socket
     _message_map: Dict[Bytes, Tuple[Float, Json]]
     _message_map_lock: Lock
     _stack: CommunicationStack
+    _socket: Socket
 
     _status_update = pyqtSignal(str)       # increment (message)
     _status_reset  = pyqtSignal(int, str)  # reset (number, message)
 
-    def __init__(self, stack: CommunicationStack, socket_type: Int = SOCK_DGRAM):
+    def __init__(self, stack: CommunicationStack, socket: Socket):
         """
         The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
         data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
@@ -92,9 +91,9 @@ class LayerN(QObject):
         super().__init__()
 
         # Initialize the layer's attributes.
-        self._socket = Socket(AF_INET6, socket_type)
         self._message_map = {}
         self._message_map_lock = Lock()
+        self._socket = socket
         self._stack = stack
 
         # Connect the status signal's to the logger
@@ -103,15 +102,6 @@ class LayerN(QObject):
 
         # Start the message map cleaner thread.
         Thread(target=self._clean_message_map).start()
-
-    @abstractmethod
-    def _listen(self) -> None:
-        """
-        This method is used to listen for incoming data on the socket. There is a "listen" method per port being used by
-        the Communication Stack. This is because each layer of the stack interprets data differently; Layer4 will
-        receive raw, unencrypted data, where-as Layer2/3 will receive encrypted data. Layer1 only receives data from the
-        applications running the proxy.
-        """
 
     @abstractmethod
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
@@ -129,15 +119,6 @@ class LayerN(QObject):
         will require a {"token": ..., "enc_data": ...} format, where-as raw data will only require the data to be sent.
         """
 
-    @property
-    @abstractmethod
-    def _port(self) -> Int:
-        """
-        This property is used to return the port number used by the layer. This is used to bind the socket to the
-        correct port, and to identify the layer in the Communication Stack. It is defined as a property to allow
-        abstract methods to use the port no matter the implementation.
-        """
-
     def _prep_data(self, connection: Connection, data: Json) -> Bytes:
         """
         This method is used to prepare the data to be sent to a connection. The data has the connection stored under the
@@ -147,6 +128,8 @@ class LayerN(QObject):
 
         data["token"] = connection.token
         data["id"] = secrets.token_bytes(16)
+        data["layer"] = type(self).__name__[-1]
+        data["secure"] = data["layer"].is_digit() and int(data["layer"]) < 4
         self._message_map[data["id"]] = (time.time(), data)
         return SafeJson.dumps(data)
 

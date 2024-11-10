@@ -2,17 +2,15 @@ import logging
 import secrets
 from enum import Enum
 from ipaddress import IPv6Address
-from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import Connection, LayerN, LayerNProtocol
-from SNetwork.Config import LAYER_D_PORT, DEFAULT_IPV6, DIRECTORY_IP, DIRECTORY_IDENTIFIER
+from SNetwork.Config import DIRECTORY_IP, DIRECTORY_IDENTIFIER
 from SNetwork.Crypt.AsymmetricKeys import KeyPair
 from SNetwork.Crypt.Certificate import X509CertificateSigningRequest, X509Certificate
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
-from SNetwork.Crypt.KeyManager import KeyManager
+from SNetwork.Managers.KeyManager import KeyManager
 from SNetwork.Crypt.Sign import Signer
-from SNetwork.Utils.Json import SafeJson
-from SNetwork.Utils.Types import Int, Json, Bool, Optional, Bytes
+from SNetwork.Utils.Types import Json, Bool, Optional, Bytes
 
 
 class LayerDProtocol(LayerNProtocol, Enum):
@@ -36,8 +34,8 @@ class LayerD(LayerN):
     _is_directory_service: Bool
     _waiting_for_certificate: Bool
 
-    def __init__(self, is_directory_service: Bool, stack, this_identifier: Bytes, this_static_key_pair: Optional[KeyPair] = None) -> None:
-        super().__init__(stack)
+    def __init__(self, stack, socket, is_directory_service: Bool, this_identifier: Bytes, this_static_key_pair: Optional[KeyPair] = None) -> None:
+        super().__init__(stack, socket)
 
         assert bool(is_directory_service) is bool(this_static_key_pair)
         self._this_identifier = this_identifier
@@ -46,18 +44,7 @@ class LayerD(LayerN):
         self._waiting_for_certificate = False
 
         # Start listening on the socket for this layer.
-        Thread(target=self._listen).start()
         logging.debug("Layer D Ready")
-
-    def _listen(self) -> None:
-        # Bind the insecure socket to port 40005.
-        self._socket.bind((DEFAULT_IPV6, self._port))
-
-        # Listen for incoming raw requests, and handle them in a new thread.
-        while True:
-            data, address = self._socket.recvfrom(4096)
-            request = SafeJson.loads(data)
-            request and Thread(target=self._handle_command, args=(IPv6Address(address[0]), request)).start()
 
     def join_network(self, this_unique_identifier: bytes) -> None:
         # Create a temporary, unencrypted connection to the directory service (first time: cant use L4).
@@ -132,7 +119,3 @@ class LayerD(LayerN):
 
     def _send(self, connection: Connection, data: Json) -> None:
         pass
-
-    @property
-    def _port(self) -> Int:
-        return LAYER_D_PORT

@@ -11,7 +11,7 @@ from threading import Lock, Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import strict_isolation
-from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, LAYER_3_PORT, DEFAULT_IPV6
+from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, DEFAULT_IPV6, PORT
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float
@@ -91,8 +91,8 @@ class Layer3(LayerN):
     _stored_keys: List[Bytes]
     _node_lookup_requests: Dict[Bytes, NodeLookupRequest]
 
-    def __init__(self, stack) -> None:
-        super().__init__(stack)
+    def __init__(self, stack, socket) -> None:
+        super().__init__(stack, socket)
 
         # Store this node's identifier.
         self._this_identifier = self._stack._layer4._this_identifier
@@ -104,31 +104,7 @@ class Layer3(LayerN):
         self._node_lookup_requests = {}
 
         # Start listening on the socket for this layer.
-        Thread(target=self._listen).start()
         logging.debug("Layer 3 Ready")
-
-    def _listen(self) -> None:
-        # todo: move into shared function (with layer 2) - secure_listen/recv
-        # Bind the insecure socket to port 40000.
-        self._socket.bind((DEFAULT_IPV6, self._port))
-
-        while True:
-            # Split the data into its token (to get the encryption key), and the encrypted data.
-            data, address = self._socket.recvfrom(4096)
-            request = SafeJson.loads(data)
-            token, encrypted_data = request["token"], request["data"]
-
-            # Ensure the token represents a connection that both exists, and is in the accepted state.
-            if token in self._stack._layer4._conversations.keys() and self._stack._layer4._conversations[token].is_accepted():
-                e2e_key = self._stack._layer4._conversations[token].e2e_primary_key
-                decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
-                decrypted_json = SafeJson.loads(decrypted_data)
-                Thread(target=self._handle_command, args=(IPv6Address(address[0]), decrypted_json)).start()
-
-            # Otherwise, the connection is unknown, and the request is ignored.
-            else:
-                logging.warning(f"Received request from unknown token {token}.")
-                continue
 
     @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
@@ -174,12 +150,7 @@ class Layer3(LayerN):
             "token": connection.token,
             "data": encrypted_data})
 
-        self._socket.sendto(encoded_data, (connection.address.exploded, self._port))
-
-    @property
-    def _port(self) -> Int:
-        # Get the port from the configuration.
-        return LAYER_3_PORT
+        self._socket.sendto(encoded_data, (connection.address.exploded, PORT))
 
     def join_distributed_hash_table_network(self, known_node: Connection) -> None:
         logging.debug(f"Joining DHT network with known node {known_node}")

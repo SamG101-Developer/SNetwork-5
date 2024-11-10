@@ -7,11 +7,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket
-from threading import Thread
 
 from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import strict_isolation, cross_isolation
-from SNetwork.Config import LAYER_2_PORT
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Crypt.KEM import KEM
 from SNetwork.Crypt.Sign import Signer
@@ -108,15 +106,11 @@ class Layer2(LayerN):
         "Tunnel accepted from candidate node.",
     ]
 
-    def __init__(self, stack) -> None:
-        super().__init__(stack)
+    def __init__(self, stack, socket) -> None:
+        super().__init__(stack, socket)
 
         # Start listening on the socket for this layer.
-        Thread(target=self._listen).start()
         logging.debug("Layer 2 Ready")
-
-    def _listen(self) -> None:
-        pass
 
     @strict_isolation
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
@@ -150,10 +144,6 @@ class Layer2(LayerN):
 
     def _send(self, connection: Connection, data: Json) -> None:
         pass
-
-    @property
-    def _port(self) -> Int:
-        return LAYER_2_PORT
 
     def create_route(self) -> None:
         ...
