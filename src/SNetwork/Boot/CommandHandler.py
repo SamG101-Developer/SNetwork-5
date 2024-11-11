@@ -33,7 +33,14 @@ class CommandHandler:
 
     @staticmethod
     def _handle_directory(arguments: Namespace) -> None:
-        ProfileManager.create_profile("directory", "", silent=True)
+        ProfileManager.switch_profile("directory", "")
+        comm_stack = CommunicationStack(is_directory_node=True)
+        while True: continue
+
+    @staticmethod
+    def _handle_join(arguments: Namespace) -> None:
+        comm_stack = CommunicationStack(is_directory_node=False)
+        while True: continue
 
     @staticmethod
     def _handle_none(_) -> None:

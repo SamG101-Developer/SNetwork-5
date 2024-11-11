@@ -10,6 +10,22 @@ class ProfileManager:
     CURRENT_HASHED_PASSWORD: Bytes
 
     @staticmethod
+    def _get_current_profile_username_from_json() -> Bytes:
+        current_profiles = json.load(open("profiles.json", "rb"))
+        for username, profile in current_profiles.items():
+            if profile["current"]:
+                return Hasher.hash(username.encode(), HashAlgorithms.SHA3_256())
+        return b""
+
+    @staticmethod
+    def _get_current_profile_password_from_json() -> Bytes:
+        current_profiles = json.load(open("profiles.json", "rb"))
+        for username, profile in current_profiles.items():
+            if profile["current"]:
+                return profile["password"]
+        return b""
+
+    @staticmethod
     def create_profile(username: Str, password: Str, *, silent: bool = False) -> None:
         hashed_username = Hasher.hash(username.encode(), HashAlgorithms.SHA3_256())
         hashed_password = Hasher.hash(password.encode(), HashAlgorithms.SHA3_256())
@@ -66,3 +82,7 @@ class ProfileManager:
         current_profiles = json.load(open("profiles.json", "rb"))
         for username, profile in current_profiles.items():
             print(f"Profile: {username}" + (" (Current)" if profile["current"] else ""))
+
+
+ProfileManager.CURRENT_HASHED_USERNAME = ProfileManager._get_current_profile_username_from_json()
+ProfileManager.CURRENT_HASHED_PASSWORD = ProfileManager._get_current_profile_password_from_json()
