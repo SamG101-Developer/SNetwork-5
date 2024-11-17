@@ -1,11 +1,13 @@
 import os.path
 import sys
+
+# Append the source folder to the system path to allow "from SNetwork" imports.
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
 from argparse import ArgumentParser
 from argformat.formatter import StructuredFormatter
 
-from SNetwork.Boot.CommandHandler import CommandHandler
+from SNetwork.Managers.CommandManager import CommandHandler
 
 
 class ErrorArgumentParser(ArgumentParser):
@@ -28,16 +30,12 @@ def create_argument_parser() -> ArgumentParser:
     profile_manager_create_profile.add_argument("--name", type=str, required=True, help="Name of profile", dest="username")
     profile_manager_create_profile.add_argument("--pass", type=str, help="Password of profile", dest="password")
 
-    profile_manager_switch_profile = profile_manager_subparsers.add_parser("switch", help="Switch to a existing profile")
-    profile_manager_switch_profile.add_argument("--name", type=str, required=True, help="Name of profile", dest="username")
-    profile_manager_switch_profile.add_argument("--pass", type=str, help="Password of profile", dest="password")
-
-    profile_manager_current_profile = profile_manager_subparsers.add_parser("current", help="Display the current profile")
-
     profile_manager_list_profiles = profile_manager_subparsers.add_parser("list", help="List all profiles")
 
     # Join Parser
     join_parser = subparsers.add_parser("join", help="Join the network")
+    join_parser.add_argument("--name", type=str, required=True, help="Name of profile", dest="username")
+    join_parser.add_argument("--pass", type=str, help="Password of profile", dest="password")
 
     # Directory Node Parser
     directory_node_parser = subparsers.add_parser("directory", help="Join the network as a directory node")
@@ -58,5 +56,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Append folder to the system path to allow "from SNetwork" imports.
     main()

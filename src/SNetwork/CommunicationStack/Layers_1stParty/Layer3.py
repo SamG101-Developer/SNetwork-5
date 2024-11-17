@@ -9,9 +9,9 @@ from enum import Enum
 from ipaddress import IPv6Address
 from threading import Lock, Thread
 
-from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import strict_isolation
-from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, DEFAULT_IPV6, PORT
+from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH, PORT
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
 from SNetwork.Crypt.Hash import Hasher, SHA3_256
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float
@@ -132,7 +132,7 @@ class Layer3(LayerN):
             case _:
                 logging.error(f"Invalid command: {request["command"]}")
 
-    def _send(self, connection: Connection, data: Json) -> None:
+    def _send(self, connection: Connection, protocol: LayerNProtocol, request: Json) -> None:
         # todo: move into shared function (with layer 2) - secure_send
 
         # Check the connection is in the accepted state.
@@ -142,7 +142,7 @@ class Layer3(LayerN):
 
         # Encrypt the data with the end-to-end key.
         encrypted_data = SymmetricEncryption.encrypt(
-            data=self._prep_data(connection, data),
+            data=self._prep_data(connection, request),
             key=self._stack._layer4._conversations[connection.token].e2e_primary_key)
 
         # Send the encrypted data to the address.

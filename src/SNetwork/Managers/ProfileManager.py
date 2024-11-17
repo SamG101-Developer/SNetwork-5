@@ -1,88 +1,55 @@
 import logging
 import json
 
-from SNetwork.Utils.Types import Bytes, Str
+from SNetwork.Config import PROFILE_FILE
+from SNetwork.Utils.Types import Str
 from SNetwork.Crypt.Hash import Hasher, HashAlgorithms
+from SNetwork.Utils.Types import Bytes, Int, Optional, Tuple
 
 
 class ProfileManager:
-    CURRENT_HASHED_USERNAME: Bytes
-    CURRENT_HASHED_PASSWORD: Bytes
-
     @staticmethod
-    def _get_current_profile_username_from_json() -> Bytes:
-        current_profiles = json.load(open("profiles.json", "rb"))
-        for username, profile in current_profiles.items():
-            if profile["current"]:
-                return Hasher.hash(username.encode(), HashAlgorithms.SHA3_256())
-        return b""
-
-    @staticmethod
-    def _get_current_profile_password_from_json() -> Bytes:
-        current_profiles = json.load(open("profiles.json", "rb"))
-        for username, profile in current_profiles.items():
-            if profile["current"]:
-                return profile["password"]
-        return b""
-
-    @staticmethod
-    def create_profile(username: Str, password: Str, *, silent: bool = False) -> None:
+    def create_profile(username: Str, password: Str) -> None:
+        # Hash the username and password.
         hashed_username = Hasher.hash(username.encode(), HashAlgorithms.SHA3_256())
         hashed_password = Hasher.hash(password.encode(), HashAlgorithms.SHA3_256())
 
-        current_profiles = json.load(open("profiles.json", "rb"))
-        if username in current_profiles and not silent:
+        # Load the current profiles and check if the username already exists.
+        current_profiles = json.load(open(PROFILE_FILE, "rb"))
+        if username in current_profiles:
             logging.error("Profile already exists")
             return
 
-        elif username in current_profiles and silent:
-            ProfileManager.switch_profile(username, password)
-
+        # Get the next available port from the current profiles, and update the JSON file.
         else:
             ports = [int(current_profiles[profile]["port"]) for profile in current_profiles]
             port = min(set(range(min(ports), max(ports) + 2)) - set(ports))
-            current_profiles[username] = {"username": username, "password": hashed_password.hex(), "port": port, "current": False}
-            json.dump(current_profiles, open("profiles.json", "w"))
-            ProfileManager.switch_profile(username, password)
+            current_profiles[username] = {"username": username, "password": hashed_password.hex(), "port": port}
+            json.dump(current_profiles, open(PROFILE_FILE, "w"))
 
     @staticmethod
-    def switch_profile(username: Str, password: Str) -> None:
+    def validate_profile(username: Str, password: Str) -> Optional[Tuple[Bytes, Int]]:
+        # Hash the username and password.
         hashed_username = Hasher.hash(username.encode(), HashAlgorithms.SHA3_256())
         hashed_password = Hasher.hash(password.encode(), HashAlgorithms.SHA3_256())
 
-        current_profiles = json.load(open("profiles.json", "rb"))
+        # Load the current profiles and check if the username exists.
+        current_profiles = json.load(open(PROFILE_FILE, "rb"))
         if username not in current_profiles:
             logging.error("Username doesn't exist")
-            return
+            return None
 
+        # Check if the password is correct. Todo: bytes_eq
         if hashed_password.hex() != current_profiles[username]["password"]:
             logging.error("Incorrect password")
-            return
+            return None
 
-        for _, profile in current_profiles.items():
-            profile["current"] = False
-        current_profiles[username]["current"] = True
-
-        json.dump(current_profiles, open("profiles.json", "w"))
-
-        ProfileManager.CURRENT_HASHED_USERNAME = hashed_username
-        ProfileManager.CURRENT_HASHED_PASSWORD = hashed_password
+        # Return the hashed username and port.
+        return hashed_username, current_profiles[username]["port"]
 
     @staticmethod
-    def print_current_profile() -> None:
-        current_profiles = json.load(open("profiles.json", "rb"))
+    def list_profiles() -> None:
+        # Load the current profiles and print them.
+        current_profiles = json.load(open(PROFILE_FILE, "rb"))
         for username, profile in current_profiles.items():
-            if profile["current"]:
-                print(f"Current Profile: {username}")
-                return
-        logging.error("No current profile set")
-
-    @staticmethod
-    def list_all_profiles() -> None:
-        current_profiles = json.load(open("profiles.json", "rb"))
-        for username, profile in current_profiles.items():
-            print(f"Profile: {username}" + (" (Current)" if profile["current"] else ""))
-
-
-ProfileManager.CURRENT_HASHED_USERNAME = ProfileManager._get_current_profile_username_from_json()
-ProfileManager.CURRENT_HASHED_PASSWORD = ProfileManager._get_current_profile_password_from_json()
+            print(f"Profile: {username}")

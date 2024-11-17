@@ -1,4 +1,4 @@
-import os
+import secrets
 
 from cryptography.hazmat.primitives.ciphers.aead import AESOCB3
 from cryptography.hazmat.primitives.keywrap import aes_key_unwrap, aes_key_wrap
@@ -19,7 +19,7 @@ class SymmetricEncryption:
     @staticmethod
     def generate_key() -> Bytes:
         # Generate a random key and return it.
-        random_key = os.urandom(SymmetricEncryption.KEY_LENGTH)
+        random_key = secrets.token_bytes(SymmetricEncryption.KEY_LENGTH)
         return random_key
 
     @staticmethod

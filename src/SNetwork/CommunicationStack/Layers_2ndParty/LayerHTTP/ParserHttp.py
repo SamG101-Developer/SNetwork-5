@@ -1,7 +1,7 @@
 from SNetwork.Utils.Types import Bytes, Dict
 
 
-class HttpParser:
+class ParserHttp:
     _http: Bytes
 
     def __init__(self, http: Bytes) -> None:

@@ -1,0 +1,161 @@
+from __future__ import annotations
+from abc import abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from ipaddress import IPv6Address
+from logging import Logger
+from socket import socket as Socket
+from typing import TYPE_CHECKING
+
+from SNetwork.Utils.Types import Bytes, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
+from SNetwork.Utils.Json import SafeJson
+
+if TYPE_CHECKING:
+    from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
+    from SNetwork.Managers.KeyManager import KeyStoreData
+
+
+class ConnectionState(Enum):
+    NotConnected = 0x00
+    PendingConnection = 0x01
+    ConnectionOpen = 0x02
+    ConnectionClosed = 0x03
+
+
+@dataclass(slots=True)
+class Connection:
+    """
+    Each Connection object represents a connection to a remote node. It contains a list of data pertaining to the node,
+    and the encrypted connection.
+
+    Attributes:
+        that_address: The IPv6 address of the remote node.
+        that_port: The port number of the remote node.
+        that_identifier: The identifier of the remote node.
+        connection_token: The unique connection identifier.
+        connection_state: The current state of the connection.
+        that_ephemeral_public_key: The ephemeral public key of the remote node for this connection.
+        e2e_primary_keys: The end-to-end primary keys other keys are derived from: {0: ..., 100: ...} for rotations.
+    """
+
+    that_address: IPv6Address
+    that_port: Int
+    that_identifier: Bytes
+    connection_token: Bytes
+    connection_state: ConnectionState = field(default=ConnectionState.NotConnected)
+    that_ephemeral_public_key: Optional[Bytes] = field(default=b"")
+    this_ephemeral_public_key: Optional[Bytes] = field(default=b"")
+    this_ephemeral_secret_key: Optional[Bytes] = field(default=b"")
+    e2e_primary_keys: Optional[Dict[Int, Bytes]] = field(default_factory=dict)
+    key_rotations: Int = field(default=0)
+
+    def is_accepted(self) -> Bool:
+        return self.connection_state == ConnectionState.ConnectionOpen
+
+    def is_rejected(self) -> Bool:
+        return self.connection_state == ConnectionState.ConnectionClosed
+
+    @property
+    def socket_address(self) -> Tuple[Str, Int]:
+        return self.that_address.exploded, self.that_port
+
+
+class LayerNProtocol(Enum):
+    """
+    A class implemented onto each protocol enumeration defined at each layer of the network stack.
+    """
+    ...
+
+
+@dataclass(kw_only=True)
+class AbstractRequest:
+    connection_token: Bytes = field(init=False)
+    that_identifier: Bytes = field(init=False)
+    stack_layer: Int = field(init=False)
+    secure: Bool = field(init=False)
+    protocol: LayerNProtocol = field(init=False)
+    message_number: Int = field(default=0, init=False)
+
+    def serialize(self) -> Bytes:
+        # Serialize the fields, with "byte => .hex()" conversion.
+        result = {k: (1, v.hex()) if isinstance(v, bytes) else v for k, v in self.__dict__.items()}
+        return SafeJson.dumps(result)
+
+    @staticmethod
+    def deserialize[T: AbstractRequest](data: Bytes, to: Type[T]) -> T:
+        # Deserialize the fields, with ".hex() => byte" conversion.
+        result = SafeJson.loads(data)
+        return to(**{k: bytes.fromhex(v[1]) if isinstance(v, tuple) else v for k, v in result.items()})
+
+
+class LayerN:
+    """
+    Abstract class, which defines the structure of a network layer. Every method in this class is abstract and must be
+    implemented by a subclass. The purpose of this class is to define a common interface for network layers. Each layer
+    operates over a separate socket, isolating subsets of commands and data from the rest of the stack.
+
+    Attributes:
+        _socket: The socket object used to send and receive data.
+
+    Methods:
+        _listen: The method that listens for incoming data.
+        _handle_command: The method that processes incoming data.
+        _send: The method that sends data to a connection.
+        _port: The port number used by the layer.
+    """
+
+    _stack: CommunicationStack
+    _node_info: Optional[KeyStoreData]
+    _socket: Socket
+    _logger: Logger
+
+    def __init__(self, stack: CommunicationStack, node_info: Optional[KeyStoreData], socket: Socket, logger: Logger):
+        """
+        The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
+        data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
+        isn't used is for the Layer1 proxy socket, which listens for TCP connections, to proxy the data out.
+        """
+        super().__init__()
+
+        # Initialize the layer's connection attributes.
+        self._socket = socket
+        self._node_info = node_info
+        self._stack = stack
+        self._logger = logger
+
+    @abstractmethod
+    def _handle_command(self, address: IPv6Address, port: Int, request: Json) -> None:
+        """
+        This method is used to call the correct handler methods depending on the command received. The command is
+        extracted from the request, and the appropriate handler is called. There can be optional validation checks, such
+        as ensuring that the request contains a command and token.
+        """
+
+    @abstractmethod
+    def _send(self, connection: Connection, request: AbstractRequest) -> None:
+        """
+        This method is used to send data to a connection. The connection object contains the necessary information to
+        send the data to the correct node. Different layers treat the data differently, for example, encrypting the data
+        will require a {"token": ..., "enc_data": ...} format, where-as raw data will only require the data to be sent.
+        """
+
+    def _prep_data(self, connection: Connection, request: AbstractRequest) -> AbstractRequest:
+        """
+        This method is used to prepare the data to be sent to a connection. The data has the connection stored under the
+        "token" key, and a random message ID added to, for re-sending malformed messages. The data is then dumped to
+        JSON, and converted to bytes and returned.
+        """
+
+        request.connection_token = connection.connection_token
+        request.that_identifier = connection.that_identifier
+        request.stack_layer = type(self).__name__[-1]
+        request.secure = request.stack_layer.isdigit() and int(request.stack_layer) < 4
+        return request
+
+    def __del__(self):
+        """
+        The shared deletion method for all LayerN objects. This method closes the socket when the object is deleted, as
+        long as the socket is not yet closed.
+        """
+
+        self._socket and self._socket.close()

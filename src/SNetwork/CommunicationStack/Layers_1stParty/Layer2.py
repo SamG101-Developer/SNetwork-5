@@ -8,13 +8,13 @@ from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket
 
-from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import strict_isolation, cross_isolation
 from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.Crypt.KEM import KEM
 from SNetwork.Crypt.Sign import Signer
 from SNetwork.Crypt.Symmetric import SymmetricEncryption
-from SNetwork.Utils.Types import Int, Json, Bytes, Dict, Optional, List, Str
+from SNetwork.Utils.Types import Json, Bytes, Dict, Optional, List, Str
 from SNetwork.Utils.Json import SafeJson
 
 
@@ -142,7 +142,7 @@ class Layer2(LayerN):
             case _:
                 logging.error(f"Invalid command: {request["command"]}")
 
-    def _send(self, connection: Connection, data: Json) -> None:
+    def _send(self, connection: Connection, protocol: LayerNProtocol, request: Json) -> None:
         pass
 
     def create_route(self) -> None:

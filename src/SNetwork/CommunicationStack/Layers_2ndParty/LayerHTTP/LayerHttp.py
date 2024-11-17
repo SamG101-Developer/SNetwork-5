@@ -1,24 +1,21 @@
-import logging
-import secrets
-import select
+import secrets, select
 from enum import Enum
 from ipaddress import IPv6Address
 from socket import socket as Socket, AF_INET, AF_INET6, SOCK_STREAM
 from threading import Thread
 
-from SNetwork.CommunicationStack.LayerN import LayerN, LayerNProtocol, Connection
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
-from SNetwork.Config import LOCAL_HOST, MAX_TCP_LISTEN, HTTP_CONNECT_ESTABLISHED, PORT
-from SNetwork.Utils.Types import Bytes, Callable, Json
-from SNetwork.Utils.HttpParser import HttpParser
-from SNetwork.Utils.SelectableDict import SelectableDict, Selectable
+from SNetwork.Config import MAX_TCP_LISTEN, HTTP_CONNECT_ESTABLISHED, DEFAULT_IPV6
+from SNetwork.Utils.Types import Bytes, Callable, Json, Int
+from SNetwork.CommunicationStack.Layers_2ndParty.LayerHTTP.SelectableDict import SelectableDict, Selectable
 
 
 class Layer1Protocol(LayerNProtocol, Enum):
     ...
 
 
-class Layer1(LayerN):
+class LayerHTTP(LayerN):
     """
     The "_socket" is the proxy socket, which receives incoming data from the client. The "_target_sockets" are the
     sockets that are maintained as an exit node that exchange data with the client.
@@ -31,13 +28,15 @@ class Layer1(LayerN):
     _incoming_dict: SelectableDict[Bytes]
     _outgoing_dict: SelectableDict[Bytes]
 
-    def __init__(self, stack, socket) -> None:
+    def __init__(self, stack, port: Int) -> None:
+        socket = Socket(family=SOCK_STREAM, type=AF_INET6)
         super().__init__(stack, socket)
+
         self._incoming_dict = SelectableDict[Bytes]()
         self._outgoing_dict = SelectableDict[Bytes]()
 
-        # Bind the socket to the localhost, and listen for incoming connections.
-        self._socket.bind((LOCAL_HOST, PORT))
+        # Listen for incoming connections.
+        self._socket.bind((DEFAULT_IPV6, port))
         self._socket.listen(MAX_TCP_LISTEN)
 
         # Start listening on the socket for this layer.
@@ -129,5 +128,5 @@ class Layer1(LayerN):
     def _handle_command(self, address: IPv6Address, request: Json) -> None:
         pass
 
-    def _send(self, connection: Connection, data: Json) -> None:
+    def _send(self, connection: Connection, protocol: LayerNProtocol, request: Json) -> None:
         pass
