@@ -7,6 +7,8 @@ from logging import Logger
 from socket import socket as Socket
 from typing import TYPE_CHECKING
 
+from SNetwork.CommunicationStack.Isolation import strict_isolation
+from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Types import Bytes, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
 from SNetwork.Utils.Json import SafeJson
 
@@ -47,7 +49,8 @@ class Connection:
     this_ephemeral_public_key: Optional[Bytes] = field(default=b"")
     this_ephemeral_secret_key: Optional[Bytes] = field(default=b"")
     e2e_primary_keys: Optional[Dict[Int, Bytes]] = field(default_factory=dict)
-    key_rotations: Int = field(default=0)
+    key_rotations: Int = field(default=0, init=False)
+    message_sent_number: Int = field(default=0, init=False)
 
     def is_accepted(self) -> Bool:
         return self.connection_state == ConnectionState.ConnectionOpen
@@ -69,13 +72,6 @@ class LayerNProtocol(Enum):
 
 @dataclass(kw_only=True)
 class AbstractRequest:
-    connection_token: Bytes = field(init=False)
-    that_identifier: Bytes = field(init=False)
-    stack_layer: Int = field(init=False)
-    secure: Bool = field(init=False)
-    protocol: LayerNProtocol = field(init=False)
-    message_number: Int = field(default=0, init=False)
-
     def serialize(self) -> Bytes:
         # Serialize the fields, with "byte => .hex()" conversion.
         result = {k: (1, v.hex()) if isinstance(v, bytes) else v for k, v in self.__dict__.items()}
@@ -86,6 +82,21 @@ class AbstractRequest:
         # Deserialize the fields, with ".hex() => byte" conversion.
         result = SafeJson.loads(data)
         return to(**{k: bytes.fromhex(v[1]) if isinstance(v, tuple) else v for k, v in result.items()})
+
+
+class InsecureRequest(AbstractRequest):
+    connection_token: Bytes = field(init=False)
+    that_identifier: Bytes = field(init=False)
+    stack_layer: Int = field(init=False)
+    protocol: LayerNProtocol = field(init=False)
+    message_number: Int = field(default=0, init=False)
+
+
+@dataclass(kw_only=True)
+class SecureRequest(AbstractRequest):
+    connection_token: Bytes
+    encrypted_data: Bytes
+    secure: Bool = field(default=True, init=False)
 
 
 class LayerN:
@@ -131,13 +142,37 @@ class LayerN:
         as ensuring that the request contains a command and token.
         """
 
-    @abstractmethod
-    def _send(self, connection: Connection, request: AbstractRequest) -> None:
+    @strict_isolation
+    def _send(self, connection: Connection, request: InsecureRequest) -> None:
         """
         This method is used to send data to a connection. The connection object contains the necessary information to
         send the data to the correct node. Different layers treat the data differently, for example, encrypting the data
         will require a {"token": ..., "enc_data": ...} format, where-as raw data will only require the data to be sent.
         """
+
+        # Add the connection token, and send the unencrypted data to the address.
+        encoded_data = self._prep_data(connection, request).serialize()
+        self._socket.sendto(encoded_data, connection.socket_address)
+
+    @strict_isolation
+    def _secure_send(self, connection: Connection, request: InsecureRequest) -> None:
+        """
+        This method is used to send secure data to a connection. The data is automatically marked as secure, allowing
+        the single recv function to know whether decryption is necessary or not.
+        """
+
+        # Create the ciphertext using the correct primary key from the connection.
+        encrypted_data = SymmetricEncryption.encrypt(
+            data=self._prep_data(connection, request).serialize(),
+            key=self._stack._layer4._conversations[connection.connection_token].e2e_primary_keys[request.message_number // 100])
+
+        # Form an encrypted request and send it to the address.
+        secure_request = SecureRequest(
+            connection_token=connection.connection_token,
+            encrypted_data=encrypted_data)
+        encoded_data = secure_request.serialize()
+
+        self._socket.sendto(encoded_data, (connection.that_address.exploded, connection.that_port))
 
     def _prep_data(self, connection: Connection, request: AbstractRequest) -> AbstractRequest:
         """
@@ -146,16 +181,9 @@ class LayerN:
         JSON, and converted to bytes and returned.
         """
 
+        connection.message_sent_number += 1
         request.connection_token = connection.connection_token
         request.that_identifier = connection.that_identifier
         request.stack_layer = type(self).__name__[-1]
-        request.secure = request.stack_layer.isdigit() and int(request.stack_layer) < 4
+        request.message_number = connection.message_sent_number
         return request
-
-    def __del__(self):
-        """
-        The shared deletion method for all LayerN objects. This method closes the socket when the object is deleted, as
-        long as the socket is not yet closed.
-        """
-
-        self._socket and self._socket.close()

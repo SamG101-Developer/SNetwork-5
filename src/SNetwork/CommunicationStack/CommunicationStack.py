@@ -37,12 +37,15 @@ class CommunicationStack:
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))
 
+    def __del__(self) -> None:
+        self._socket_ln and self._socket_ln.close()
+
     def start(self, info: KeyStoreData) -> None:
         # Create the layers of the stack.
-        self._layer4 = Layer4(self, self._socket_ln)
-        self._layer3 = Layer3(self, self._socket_ln)
-        self._layer2 = Layer2(self, self._socket_ln)
-        self._layer1 = Layer1(self, self._socket_ln, LayerHTTP(self, self._port))
+        self._layer4 = Layer4(self, info, self._socket_ln)
+        self._layer3 = Layer3(self, info, self._socket_ln)
+        self._layer2 = Layer2(self, info, self._socket_ln)
+        self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self, self._port))
 
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.

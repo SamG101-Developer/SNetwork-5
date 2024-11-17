@@ -7,7 +7,8 @@ from threading import Thread
 from typing import TYPE_CHECKING
 import secrets
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, AbstractRequest, Connection, ConnectionState
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, AbstractRequest, Connection, \
+    ConnectionState, InsecureRequest, SecureRequest
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithms
@@ -32,25 +33,25 @@ class Layer4Protocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class ConnectionRequest(AbstractRequest):
+class ConnectionRequest(InsecureRequest):
     certificate: Bytes
     ephemeral_public_key: Bytes
     signature: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionAccept(AbstractRequest):
+class ConnectionAccept(InsecureRequest):
     kem_master_key: Bytes
     signature: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionClose(AbstractRequest):
+class ConnectionClose(InsecureRequest):
     reason: Str
 
 
 @dataclass(kw_only=True)
-class ConnectionRotateKey(AbstractRequest):
+class ConnectionRotateKey(InsecureRequest):
     cur_key_hashed: Bytes
     new_key_wrapped: Bytes
     after: Int
@@ -110,50 +111,6 @@ class Layer4(LayerN):
         self._conversations = {}
         self._logger.debug("Layer 4 Ready")
 
-    @strict_isolation
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
-        # Deserialize the request and call the appropriate handler.
-        request_type = globals()[Layer4Protocol(data["protocol"]).name]
-        request = request_type.deserialize(data)
-
-        # Get the token and state of the conversion for that token.
-        token = request.token
-        state = self._conversations[token].connection_state if token in self._conversations else ConnectionState.NotConnected
-
-        # Match the command to the appropriate handler.
-        match request.protocol:
-
-            # Handle a request to establish a connection from a non-connected token.
-            case Layer4Protocol.ConnectionRequest.value if state == ConnectionState.NotConnected:
-                thread = Thread(target=self._handle_connection_request, args=(address, port, request))
-                thread.start()
-
-            # Handle a response from a node that a connection request has been sent to.
-            case Layer4Protocol.ConnectionAccept.value if state == ConnectionState.PendingConnection:
-                thread = Thread(target=self._handle_connection_accept, args=(address, port, request))
-                thread.start()
-
-            # Handle a close connection request from a node that a connection has been established with.
-            case Layer4Protocol.ConnectionClose.value:
-                thread = Thread(target=self._handle_connection_close, args=(address, port, request))
-                thread.start()
-
-            # Handle a request to rotate the session key from a node that a connection has been established with.
-            case Layer4Protocol.ConnectionRotateKey.value:
-                thread = Thread(target=self._handle_rotate_key, args=(address, port, request))
-                thread.start()
-
-            # Handle either an invalid command from a connected token, or an invalid command/state combination.
-            case _:
-                self._logger.warning(f"Received invalid command from token {token}.")
-                self._logger.debug(f"State: {state}")
-
-    @strict_isolation
-    def _send(self, connection: Connection, request: AbstractRequest) -> None:
-        # Add the connection token, and send the unencrypted data to the address.
-        encoded_data = self._prep_data(connection, request).serialize()
-        self._socket.sendto(encoded_data, connection.socket_address)
-
     @cross_isolation(4)
     def connect(self, address: IPv6Address, port: Int, that_identifier: Bytes) -> Optional[Connection]:
         """
@@ -193,6 +150,7 @@ class Layer4(LayerN):
             pass
         return connection if connection.is_accepted() else None
 
+    @strict_isolation
     def rotate_key(self, connection: Connection) -> None:
         # Generate a new master key and wrap it with the current key.
         new_key = SymmetricEncryption.generate_key()
@@ -205,10 +163,48 @@ class Layer4(LayerN):
         connection.e2e_primary_keys[connection.key_rotations * 100] = new_key
 
         # Create the JSON request to rotate the session key.
-        self._send(connection, ConnectionRotateKey(
+        self._secure_send(connection, ConnectionRotateKey(
             cur_key_hashed=current_key_hashed,
             new_key_wrapped=wrapped_key,
             after=connection.key_rotations))
+
+    @strict_isolation
+    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+        # Deserialize the request and call the appropriate handler.
+        request_type = globals()[Layer4Protocol(data["protocol"]).name]
+        request = request_type.deserialize(data)
+
+        # Get the token and state of the conversion for that token.
+        token = request.token
+        state = self._conversations[token].connection_state if token in self._conversations else ConnectionState.NotConnected
+
+        # Match the command to the appropriate handler.
+        match request.protocol:
+
+            # Handle a request to establish a connection from a non-connected token.
+            case Layer4Protocol.ConnectionRequest.value if state == ConnectionState.NotConnected:
+                thread = Thread(target=self._handle_connection_request, args=(address, port, request))
+                thread.start()
+
+            # Handle a response from a node that a connection request has been sent to.
+            case Layer4Protocol.ConnectionAccept.value if state == ConnectionState.PendingConnection:
+                thread = Thread(target=self._handle_connection_accept, args=(request,))
+                thread.start()
+
+            # Handle a close connection request from a node that a connection has been established with.
+            case Layer4Protocol.ConnectionClose.value:
+                thread = Thread(target=self._handle_connection_close, args=(request,))
+                thread.start()
+
+            # Handle a request to rotate the session key from a node that a connection has been established with.
+            case Layer4Protocol.ConnectionRotateKey.value:
+                thread = Thread(target=self._handle_rotate_key, args=(request,))
+                thread.start()
+
+            # Handle either an invalid command from a connected token, or an invalid command/state combination.
+            case _:
+                self._logger.warning(f"Received invalid command from token {token}.")
+                self._logger.debug(f"State: {state}")
 
     def _handle_connection_request(self, address: IPv6Address, port: Int, request: ConnectionRequest) -> None:
         # Create the Connection object to track the conversation.
@@ -255,8 +251,8 @@ class Layer4(LayerN):
         del connection.that_ephemeral_public_key
         connection.connection_state = ConnectionState.ConnectionOpen
 
-    def _handle_connection_accept(self, address: IPv6Address, port: Int, request: ConnectionAccept) -> None:
-        # Get the connection object for this conversation.
+    def _handle_connection_accept(self, request: ConnectionAccept) -> None:
+        # Get the connection object for this request.
         connection = self._conversations[request.connection_token]
 
         # Verify the signature of the ephemeral public key.
@@ -279,16 +275,16 @@ class Layer4(LayerN):
         del connection.this_ephemeral_public_key
         connection.connection_state = ConnectionState.ConnectionOpen
 
-    def _handle_connection_close(self, address: IPv6Address, port: Int, request: ConnectionClose) -> None:
-        # Get the connection object for this conversation.
+    def _handle_connection_close(self, request: ConnectionClose) -> None:
+        # Get the connection object for this request.
         connection = self._conversations[request.connection_token]
 
         # Clean up the connection object and mark it as closed.
         connection.connection_state = ConnectionState.ConnectionClosed
         del self._conversations[request.connection_token]
 
-    def _handle_rotate_key(self, address: IPv6Address, port: Int, request: ConnectionRotateKey) -> None:
-        # Get the connection object for this conversation.
+    def _handle_rotate_key(self, request: ConnectionRotateKey) -> None:
+        # Get the connection object for this request.
         connection = self._conversations[request.connection_token]
 
         # Check if the current key matches the hashed key.
