@@ -18,9 +18,9 @@ class QuantumSign:
         return AsymmetricKeyPair(public_key=public_key, secret_key=secret_key)
 
     @staticmethod
-    def sign(*, secret_key: Bytes, message: Bytes, their_id: Bytes) -> Bytes:
+    def sign(*, secret_key: Bytes, message: Bytes, target_id: Bytes) -> Bytes:
         # Add the target identifier and timestamp to the message and hash it.
-        message += their_id + Timestamp.generate_time_stamp()
+        message += target_id + Timestamp.generate_time_stamp()
         hashed_message = Hasher.hash(value=message, algorithm=QuantumSign.HASH_ALGORITHM)
 
         # Sign the hashed extended message and return the signature.

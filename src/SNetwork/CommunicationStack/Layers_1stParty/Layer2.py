@@ -198,7 +198,7 @@ class Layer2(LayerN):
         signature = Signer.sign(
             my_static_secret_key=self._stack._layer4._this_static_key_pair,
             message=challenge + tunnel_ephemeral_key_pair.public_key.der,
-            their_id=self._stack._layer4._conversations[token].identifier)
+            target_id=self._stack._layer4._conversations[token].identifier)
         self._tunnel_keys[route_token] = TunnelKeyGroup(ephemeral_secret_key=tunnel_ephemeral_key_pair.secret_key)
 
         # Send the ephemeral public key and signature back to the target's current final node.
@@ -263,7 +263,7 @@ class Layer2(LayerN):
         signed_primary_key = Signer.sign(
             my_static_secret_key=self._stack._layer4._this_static_key_pair,
             message=primary_key,
-            their_id=self._stack._layer4._conversations[route_token].identifier)
+            target_id=self._stack._layer4._conversations[route_token].identifier)
 
         self._tunnel_message_backwards(route_token, {
             "command": Layer2Protocol.TunnelAccept.value,

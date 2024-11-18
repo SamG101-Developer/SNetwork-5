@@ -66,28 +66,21 @@ class Layer4(LayerN):
     Data sent in this layer is unencrypted, but authenticated. Once a connection is established, the end-to-end
     encryption is handled by the higher layers of the stack, specifically Layer 3 (DHT) and Layer 2 (Routing).
 
-    Todo: Add a thread to clean the challenge cache every n seconds where n is the timestamp tolerance.
-
-    Attributes
+    Attributes:
         _this_identifier: The identifier of this node.
         _this_static_secret_key: The static secret key of this node.
         _this_certificate: The X.509 certificate of this node.
-        _this_counter: A counter used to generate unique connection tokens.
-        _seen_nonces: A dictionary of nonces that have been seen before.
         _conversations: A dictionary of active conversations with other nodes.
         _cached_certificates: A dictionary of cached certificates for other nodes.
+        _cached_public_keys: A dictionary of cached public keys for other nodes.
 
     Methods:
         connect: Initiate a connection to a remote node.
-        _listen: Listens for incoming raw requests on the insecure socket.
         _handle_command: Handles incoming commands from other nodes.
-        _send: Sends unencrypted data to a remote node.
-        _generate_connection_token: Generates a unique connection token.
-        _handle_handshake_request: Handles a connection request from a remote node.
-        _handle_handshake_response: Handles a connection response from a remote node.
-        _handle_handshake_confirm: Handles a connection confirmation from a remote node.
-        _handle_connection_close: Handles a connection close request from a remote node.
-        _handle_rotate_session_key: Handles a command to rotate the session key.
+        _handle_connection_request: Handles a connection request from a remote node.
+        _handle_connection_accept: Handles a connection accept from a remote node.
+        _handle_connection_close: Handles a connection close from a remote node.
+        _handle_rotate_key: Handles a request to rotate the session key.
     """
 
     _this_identifier: Bytes
@@ -127,7 +120,7 @@ class Layer4(LayerN):
         this_ephemeral_public_key_signed = QuantumSign.sign(
             secret_key=self._this_static_secret_key,
             message=this_ephemeral_key_pair.public_key,
-            their_id=connection_token + that_identifier)
+            target_id=connection_token + that_identifier)
 
         # Create the Connection object to track the conversation.
         connection = Connection(
@@ -163,7 +156,7 @@ class Layer4(LayerN):
         connection.e2e_primary_keys[connection.key_rotations * 100] = new_key
 
         # Create the JSON request to rotate the session key.
-        self._secure_send(connection, ConnectionRotateKey(
+        self._send_secure(connection, ConnectionRotateKey(
             cur_key_hashed=current_key_hashed,
             new_key_wrapped=wrapped_key,
             after=connection.key_rotations))
@@ -239,8 +232,8 @@ class Layer4(LayerN):
         signature = QuantumSign.sign(
             secret_key=self._this_static_secret_key,
             message=kem_wrapped_key.encapsulated,
-            their_id=connection.connection_token + connection.that_identifier)
-        connection.e2e_primary_key = kem_wrapped_key.decapsulated
+            target_id=connection.connection_token + connection.that_identifier)
+        connection.e2e_primary_keys[0] = kem_wrapped_key.decapsulated
 
         # Create a new request responding to the handshake request.
         self._send(connection, ConnectionAccept(
@@ -268,7 +261,7 @@ class Layer4(LayerN):
         kem_wrapped_key = QuantumKem.decapsulate(
             secret_key=connection.this_ephemeral_secret_key,
             encapsulated=request.kem_master_key)
-        connection.e2e_primary_key = kem_wrapped_key.decapsulated
+        connection.e2e_primary_keys[0] = kem_wrapped_key.decapsulated
 
         # Clean up the connection object and mark it as open.
         del connection.this_ephemeral_secret_key

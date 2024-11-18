@@ -115,19 +115,17 @@ class Layer3(LayerN):
         join_distributed_hash_table_network: Joins the DHT network.
         get_resource: Retrieves a resource from the DHT.
         put_resource: Stores a resource in the DHT.
-        _listen: Listens for incoming raw requests and handles them in a new thread.
         _handle_command: Handles a command received from a remote node.
-        _send: Sends data to a remote node.
         _node_lookup: Initiates a node lookup request.
         _recursive_search: Recursively searches for a resource in the DHT.
         _update_k_buckets: Updates the k-buckets with a new node.
         _closest_k_nodes_to: Returns the k closest nodes to a target identifier.
-        _handle_ping: Handles a ping request.
-        _handle_pong: Handles a pong response.
-        _handle_put_resource: Handles a put resource request.
-        _handle_get_resource: Handles a get resource request.
-        _handle_return_resource: Handles a return resource response.
-        _handle_find_node: Handles a find node request.
+        _handle_ping_request: Handles a ping request.
+        _handle_pong_response: Handles a pong response.
+        _handle_put_resource_request: Handles a put resource request.
+        _handle_get_resource_request: Handles a get resource request.
+        _handle_return_resource_response: Handles a return resource response.
+        _handle_find_node_request: Handles a find node request.
         _handle_find_node_response: Handles a find node response.
         _all_known_nodes: Returns all known nodes in the DHT (flattens k_buckets).
     """
@@ -187,7 +185,7 @@ class Layer3(LayerN):
         # Send the resource to the k closest nodes.
         for node in closest_k:
             request = PutResourceRequest(resource_key=resource_key, resource_value=value)
-            self._secure_send(node, request)
+            self._send_secure(node, request)
 
     def _node_lookup(self, target_node_identifier: Bytes, find_value: Bool = False) -> None:
         # Get this node's closest "alpha" nodes, and initiate a node lookup request.
@@ -198,7 +196,7 @@ class Layer3(LayerN):
         # Send a find node request to the closest alpha nodes.
         for closest_alpha_node in closest_alpha_nodes:
             request = FindNodeRequest(target_identifier=target_node_identifier)
-            self._secure_send(closest_alpha_node, request)
+            self._send_secure(closest_alpha_node, request)
 
     def _recursive_search(self, node_identifier: Bytes, node_address: Tuple[Str, Int], target_identifier: Bytes) -> None:
         # Connect to the node, and update the k-buckets.
@@ -207,7 +205,7 @@ class Layer3(LayerN):
         # Send a get resource request to the node.
         connection = self._stack._layer4.connect(node_address, node_identifier)
         request = FindNodeRequest(target_identifier=target_identifier)
-        self._secure_send(connection, request)
+        self._send_secure(connection, request)
 
     def _update_k_buckets(self, node: Connection) -> None:
         # Determine the distance between this node and the new node.
@@ -236,7 +234,7 @@ class Layer3(LayerN):
 
             # Add the ping request to the ping queue, and send the ping request.
             self._ping_queue.append((current_time, head_node))
-            self._secure_send(head_node, request)
+            self._send_secure(head_node, request)
 
             # Wait for the ping response, or until the timeout. Todo: timestamping
             while (current_time, head_node) in self._ping_queue and time.time() - current_time < 5:
@@ -312,7 +310,7 @@ class Layer3(LayerN):
         connection = self._stack._layer4._conversations[request.connection_token]
 
         # Respond with a pong response, containing the request timestamp.
-        self._secure_send(connection, PongResponse(ping_timestamp=request.ping_timestamp))
+        self._send_secure(connection, PongResponse(ping_timestamp=request.ping_timestamp))
 
     def _handle_pong_response(self, address: IPv6Address, request: PongResponse) -> None:
         # Get the connection object for this request.
@@ -343,7 +341,7 @@ class Layer3(LayerN):
             with open(DHT_STORE_PATH % resource_key.hex(), "rb") as fo:
                 resource_value = fo.read()
             response = ReturnResourcePassResponse(resource_key=resource_key, resource_value=resource_value)
-            self._secure_send(connection, response)
+            self._send_secure(connection, response)
 
         # Otherwise, find the closest known nodes to the key.
         else:
@@ -355,7 +353,7 @@ class Layer3(LayerN):
                 resource_key=resource_key,
                 closest_node_identifiers=closest_node_identifiers,
                 closest_node_addresses=closest_node_addresses)
-            self._secure_send(connection, response)
+            self._send_secure(connection, response)
 
     def _handle_return_resource_pass_response(self, request: ReturnResourcePassResponse) -> None:
         # Get the connection object for this request.
@@ -386,7 +384,7 @@ class Layer3(LayerN):
             target_identifier=request.target_identifier,
             closest_nodes_identifiers=closest_node_identifiers,
             closest_nodes_addresses=closest_node_addresses)
-        self._secure_send(connection, response)
+        self._send_secure(connection, response)
 
     def _handle_find_node_response(self, address: IPv6Address, request: FindNodeResponse) -> None:
         # Get the connection object for this request.

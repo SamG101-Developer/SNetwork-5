@@ -135,7 +135,7 @@ class LayerN:
         self._logger = logger
 
     @abstractmethod
-    def _handle_command(self, address: IPv6Address, port: Int, request: Json) -> None:
+    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
         """
         This method is used to call the correct handler methods depending on the command received. The command is
         extracted from the request, and the appropriate handler is called. There can be optional validation checks, such
@@ -155,7 +155,7 @@ class LayerN:
         self._socket.sendto(encoded_data, connection.socket_address)
 
     @strict_isolation
-    def _secure_send(self, connection: Connection, request: InsecureRequest) -> None:
+    def _send_secure(self, connection: Connection, request: InsecureRequest) -> None:
         """
         This method is used to send secure data to a connection. The data is automatically marked as secure, allowing
         the single recv function to know whether decryption is necessary or not.
