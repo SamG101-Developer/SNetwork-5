@@ -19,7 +19,7 @@ from SNetwork.QuantumCrypto.Timestamp import Timestamp
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 
 if TYPE_CHECKING:
-    from SNetwork.Utils.Types import Bytes, Optional, Dict, Json, Int, Str
+    from SNetwork.Utils.Types import Bytes, Callable, Optional, Dict, Json, Int, Str
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
 

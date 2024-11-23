@@ -12,7 +12,7 @@ class RoutePopup(QDialog):
         self.setWindowTitle("Route Progress")
         self.setFixedSize(640, 480)
 
-        from SNetwork.CommunicationStack.Layers_1stParty.Layer2 import Layer2
+        from SNetwork.CommunicationStack.Layers_1stParty.Layer2_old import Layer2
         self._progress_cur = 0.0
         self._progress_max = len(Layer2.ROUTING_STATUS_MESSAGES) * HOP_COUNT
         self._message = ""

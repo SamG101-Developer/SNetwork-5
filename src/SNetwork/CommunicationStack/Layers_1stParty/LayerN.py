@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
-from SNetwork.Utils.Types import Bytes, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
+from SNetwork.Utils.Types import Bytes, Callable, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
 from SNetwork.Utils.Json import SafeJson
 
 if TYPE_CHECKING:
@@ -49,6 +49,7 @@ class Connection:
     this_ephemeral_public_key: Optional[Bytes] = field(default=b"")
     this_ephemeral_secret_key: Optional[Bytes] = field(default=b"")
     e2e_primary_keys: Optional[Dict[Int, Bytes]] = field(default_factory=dict)
+    socket_error_handler: Callable = field(default_factory=dict)
     key_rotations: Int = field(default=0, init=False)
     message_sent_number: Int = field(default=0, init=False)
 
@@ -82,6 +83,10 @@ class AbstractRequest:
         # Deserialize the fields, with ".hex() => byte" conversion.
         result = SafeJson.loads(data)
         return to(**{k: bytes.fromhex(v[1]) if isinstance(v, tuple) else v for k, v in result.items()})
+
+    @staticmethod
+    def deserialize_to_json(data: Bytes) -> Json:
+        return SafeJson.loads(data)
 
 
 class InsecureRequest(AbstractRequest):
