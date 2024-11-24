@@ -159,7 +159,8 @@ class LayerN:
 
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, request).serialize()
-        self._logger.debug(f"Sending raw '{request.protocol.name}' request to {connection.that_identifier.hex()}")
+        protocol = self._protocol._member_names_[request.protocol]
+        self._logger.debug(f"Sending raw '{protocol}' ({len(encoded_data)}) request to {connection.that_identifier.hex()}")
         self._socket.sendto(encoded_data, connection.socket_address)
 
     @strict_isolation
@@ -196,6 +197,6 @@ class LayerN:
         request.connection_token = connection.connection_token
         request.that_identifier = connection.that_identifier
         request.stack_layer = type(self).__name__[-1]
-        request.protocol = getattr(self._protocol, type(request).__name__)
+        request.protocol = getattr(self._protocol, type(request).__name__).value
         request.message_number = connection.message_sent_number
         return request

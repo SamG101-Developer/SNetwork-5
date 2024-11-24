@@ -12,6 +12,7 @@ from SNetwork.Config import DEFAULT_IPV6
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Managers.KeyManager import KeyStoreData
 from SNetwork.Utils.Json import SafeJson
+from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Bytes, Int
 
 
@@ -33,9 +34,11 @@ class CommunicationStack:
         # Create the sockets for the stack.
         self._port = port
         self._socket_ln = Socket(family=AF_INET6, type=SOCK_DGRAM)
+        self._logger = isolated_logger(LoggerHandlers.SYSTEM)
 
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))
+        self._logger.debug(f"Bound to port {self._port}.")
 
     def __del__(self) -> None:
         self._socket_ln and self._socket_ln.close()
@@ -45,7 +48,8 @@ class CommunicationStack:
         self._layer4 = Layer4(self, info, self._socket_ln)
         self._layer3 = Layer3(self, info, self._socket_ln)
         self._layer2 = Layer2(self, info, self._socket_ln)
-        self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self, self._port))
+        self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self))
+        self._listen()
 
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
@@ -53,6 +57,8 @@ class CommunicationStack:
             data, address = self._socket_ln.recvfrom(4096)
             request = SafeJson.loads(data)  # error handler -> json error back to sender
             if not request: continue
+
+            self._logger.debug(f"Received request from {address}.")
 
             # Handle secure requests
             if request["secure"]:

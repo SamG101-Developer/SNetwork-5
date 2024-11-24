@@ -18,6 +18,6 @@ class SafeJson:
     def dumps(data: Json, error_handler: Optional[Callable[[], None]] = None) -> Bytes:
         try:
             return json.dumps(data).encode()
-        except TypeError:
+        except TypeError as e:
             error_handler and error_handler()
             return b"{}"

@@ -6,7 +6,7 @@ from SNetwork.Utils.Types import Bytes
 
 
 class QuantumKem:
-    LOGGER = isolated_logger(LoggerHandlers.CRYPTOGRAPHY)
+    LOGGER = isolated_logger(LoggerHandlers.CRYPT)
 
     @staticmethod
     def generate_key_pair() -> AsymmetricKeyPair:

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from pqcrypto.sign import dilithium4
-import asn1crypto.core
-import asn1crypto.keys
-import asn1crypto.algos
 
 from SNetwork.Config import MESSAGE_SIGNATURE_TOLERANCE
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
@@ -14,7 +11,7 @@ from SNetwork.Utils.Types import Bool, Bytes, Int
 
 
 class QuantumSign:
-    LOGGER = isolated_logger(LoggerHandlers.CRYPTOGRAPHY)
+    LOGGER = isolated_logger(LoggerHandlers.CRYPT)
     HASH_ALGORITHM = HashAlgorithm.SHA3_256
 
     @staticmethod

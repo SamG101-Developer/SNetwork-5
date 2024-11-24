@@ -11,12 +11,12 @@ class LoggerHandlers(Enum):
     LAYER_D = 4
     LAYER_A = 5
     SYSTEM = 6
-    CRYPTOGRAPHY = 7
+    CRYPT = 7
 
 
 def isolated_logger(logger_name: LoggerHandlers) -> Logger:
     # Create a new logger with the specified name.
-    logger_name = logger_name.name.title().split(".")[-1]
+    logger_name = logger_name.name.title().split(".")[-1].zfill(7).replace("0", " ")
     logger = Logger(logger_name)
     logger.setLevel(logging.DEBUG)
 

@@ -34,7 +34,7 @@ class LayerHTTP(LayerN):
     _incoming_dict: SelectableDict[Bytes]
     _outgoing_dict: SelectableDict[Bytes]
 
-    def __init__(self, stack: CommunicationStack, application: LayerN) -> None:
+    def __init__(self, stack: CommunicationStack) -> None:
         socket = Socket(family=AF_INET6, type=SOCK_STREAM)
         super().__init__(stack, None, LayerHTTPProtocol, socket, isolated_logger(LoggerHandlers.LAYER_A))
 

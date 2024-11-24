@@ -78,6 +78,7 @@ class LayerD(LayerN):
     def join_network(self) -> None:
         # Choose a random directory service to connect to.
         d_address, d_port, d_identifier = DirectoryServiceManager.get_random_directory_service()
+        self._logger.debug(f"Contacting DS at {d_address}:{d_port}.")
 
         # Create a temporary, unencrypted connection to the directory service.
         temp_connection = Connection(
