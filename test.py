@@ -3,6 +3,7 @@ import time
 from threading import Thread
 
 import asn1crypto.algos
+import select
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QApplication
@@ -21,7 +22,7 @@ class LogMessageDisplay(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setLayout(QVBoxLayout())
-        self.setFont(QFont("JetBrains Mono", 8))
+        self.setFont(QFont("JetBrains Mono", 5))
         self.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def add_new_log_message(self, message: str) -> None:
@@ -59,28 +60,21 @@ class LogMessageScroller(QScrollArea):
         # Create the process and link the logging to pipes.
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        try:
-            while True:
-                if process.poll() is not None:
-                    break
+        # Read the output from the process.
+        Thread(target=self.read_output, args=(process.stdout,), daemon=True).start()
+        Thread(target=self.read_output, args=(process.stderr,), daemon=True).start()
 
-                # Try to read the stdout
-                stdout = process.stdout.readlines()
-                for line in stdout:
-                    self._log_message_recv.emit(line.decode().strip())
+        # Wait for the process to finish.
+        process.wait()
+        print(f"Process for node {self._node_id} has finished.")
 
-                # Try to read the stderr
-                stderr = process.stderr.readlines()
-                for line in stderr:
-                    self._log_message_recv.emit(line.decode().strip())
+    def read_output(self, pipe) -> None:
+        while True:
+            line = pipe.readline().decode("utf-8").strip()
+            if not line:
+                break
+            self._log_message_recv.emit(line)
 
-                time.sleep(0.01)
-
-        finally:
-            print(f"Killing process for node {self._node_id}")
-            process.stdout.close()
-            process.stderr.close()
-            process.kill()
 
 
 class TestGui(QWidget):

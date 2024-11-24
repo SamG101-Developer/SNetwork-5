@@ -157,6 +157,7 @@ class LayerN:
 
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, request).serialize()
+        self._logger.debug(f"Sending raw '{request.protocol.name}' request to {connection.that_identifier.hex()}")
         self._socket.sendto(encoded_data, connection.socket_address)
 
     @strict_isolation
@@ -165,6 +166,8 @@ class LayerN:
         This method is used to send secure data to a connection. The data is automatically marked as secure, allowing
         the single recv function to know whether decryption is necessary or not.
         """
+
+        protocol = request.protocol
 
         # Create the ciphertext using the correct primary key from the connection.
         encrypted_data = SymmetricEncryption.encrypt(
@@ -177,6 +180,7 @@ class LayerN:
             encrypted_data=encrypted_data)
         encoded_data = secure_request.serialize()
 
+        self._logger.debug(f"Sending encrypted '{protocol.name}' request to {connection.that_identifier.hex()}")
         self._socket.sendto(encoded_data, (connection.that_address.exploded, connection.that_port))
 
     def _prep_data(self, connection: Connection, request: AbstractRequest) -> AbstractRequest:

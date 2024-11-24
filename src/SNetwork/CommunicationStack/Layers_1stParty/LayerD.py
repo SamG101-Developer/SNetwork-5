@@ -179,7 +179,4 @@ class LayerD(LayerN):
                 thread.start()
 
     def _send(self, connection: Connection, request: InsecureRequest) -> None:
-        self._logger.debug(f"Sent {request.protocol.name} to {connection.that_identifier}")
-        self._logger.debug(request)
         super()._send(connection, request)
-        raise

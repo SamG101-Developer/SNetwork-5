@@ -16,14 +16,15 @@ class LoggerHandlers(Enum):
 
 def isolated_logger(logger_name: LoggerHandlers) -> Logger:
     # Create a new logger with the specified name.
-    logger = Logger(logger_name.name.title())
+    logger_name = logger_name.name.title().split(".")[-1]
+    logger = Logger(logger_name)
     logger.setLevel(logging.DEBUG)
 
     # Only add a handler if one does not already exist.
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(f"[{logger_name}] %(asctime)s - %(levelname)s - %(message)s")
+        formatter = logging.Formatter(f"[{logger_name}] - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
