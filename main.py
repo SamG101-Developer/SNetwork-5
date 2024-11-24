@@ -39,6 +39,7 @@ def create_argument_parser() -> ArgumentParser:
 
     # Directory Node Parser
     directory_node_parser = subparsers.add_parser("directory", help="Join the network as a directory node")
+    directory_node_parser.add_argument("--name", type=str, required=True, help="Name of directory node", dest="username")
 
     # Exit Node Parser
     exit_node_parser = subparsers.add_parser("exit", help="Exit the network")

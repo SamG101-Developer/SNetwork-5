@@ -1,6 +1,6 @@
-from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
+from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
 from SNetwork.Utils.Types import Bytes, Int
 
 
@@ -12,10 +12,12 @@ class Node:
     def __init__(self, hashed_username: Bytes, hashed_password: Bytes, port: Int) -> None:
         self._communication_stack = CommunicationStack(hashed_username, port)
 
+        # Create the bootstrapper layer.
+        self._bootstrapper = LayerD(self._communication_stack, self._communication_stack._socket_ln, False)
+
         # Check if the node has been registered before.
         has_info = KeyManager.has_info(hashed_username)
         if not has_info:
-            self._bootstrapper = LayerD(self._communication_stack, self._communication_stack._socket_ln, False)
             self._boot_sequence(hashed_username, hashed_password)
 
         # Save the information of the node and start the communication stack.

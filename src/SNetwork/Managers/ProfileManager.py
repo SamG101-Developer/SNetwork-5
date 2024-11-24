@@ -1,6 +1,6 @@
 import logging, json
 
-from SNetwork.Config import PROFILE_FILE
+from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Types import Str, List
@@ -50,6 +50,19 @@ class ProfileManager:
         if hashed_password.hex() != current_profiles[username]["password"]:
             logging.error("Incorrect password")
             return None
+
+        # Return the hashed username and port.
+        return hashed_username, hashed_password, current_profiles[username]["port"]
+
+    @staticmethod
+    def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int]]:
+        # Hash the username and password.
+        hashed_username = Hasher.hash(username.encode(), HashAlgorithm.SHA3_256)
+        hashed_password = Hasher.hash(b"", HashAlgorithm.SHA3_256)
+
+        # Load the current profiles.
+        with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
+            current_profiles = json.load(file)
 
         # Return the hashed username and port.
         return hashed_username, hashed_password, current_profiles[username]["port"]

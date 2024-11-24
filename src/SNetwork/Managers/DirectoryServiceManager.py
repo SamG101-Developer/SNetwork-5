@@ -1,18 +1,16 @@
-import json
-import random
-import socket
 from ipaddress import IPv6Address
+import json, pathlib, random, socket
 
 from SNetwork.Config import DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.Utils.Files import SafeFileOpen
-from SNetwork.Utils.Types import Bytes, Int, Str
+from SNetwork.Utils.Types import Bytes, Int, Str, Bool
 
 
 class DirectoryServiceManager:
     @staticmethod
-    def new_directory_service(name: str) -> None:
+    def new_directory_service(name: str) -> Bool:
         # Generate a static key pair and get the address of the current machine.
         static_key_pair = QuantumSign.generate_key_pair()
         this_address = socket.getaddrinfo(socket.gethostname(), 0, socket.AF_INET6)[0][4][0]
@@ -20,7 +18,7 @@ class DirectoryServiceManager:
         # Check the current directory services for the name.
         with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
             directory_services = json.load(file)
-        if name in directory_services: return
+        if name in directory_services: return False
 
         # Get the next available port from the current directory services.
         ports = [int(directory_service["port"]) for directory_service in directory_services.values()] or [50000]
@@ -44,6 +42,12 @@ class DirectoryServiceManager:
             json.dump(directory_services, file)
         with SafeFileOpen(DIRECTORY_SERVICE_PRIVATE_FILE % name, "w") as file:
             json.dump(private_directory_service_entry, file)
+
+        # Make DIRECTORY_SERVICE_PRIVATE_FILE % name readonly with 0o400 permissions.
+        path = pathlib.Path(DIRECTORY_SERVICE_PRIVATE_FILE % name)
+        path.chmod(0o400)
+
+        return True
 
     @staticmethod
     def get_random_directory_service() -> tuple[IPv6Address, Int, Bytes]:

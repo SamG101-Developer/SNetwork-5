@@ -1,6 +1,7 @@
 import os
 from argparse import Namespace
 
+from SNetwork.Nodes.DirectoryNode import DirectoryNode
 from SNetwork.Nodes.Node import Node
 from SNetwork.Managers.ProfileManager import ProfileManager
 from SNetwork.Utils.Types import NoReturn, Str
@@ -26,7 +27,8 @@ class CommandManager:
     @staticmethod
     @no_return_interruptable
     def _handle_directory(arguments: Namespace) -> NoReturn:
-        directory_node = DirectoryNode()
+        hashed_username, hashed_password, port = ProfileManager.validate_directory_profile(arguments.username)
+        directory_node = DirectoryNode(arguments.username, hashed_username, hashed_password, port)
         while True: continue
 
     @staticmethod

@@ -12,12 +12,12 @@ from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.Utils.Files import SafeFileOpen
+from SNetwork.Utils.Logger import LoggerHandlers, isolated_logger
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float, Str
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
-    from SNetwork.Utils.Logger import LoggerHandlers, isolated_logger
 
 
 type KBucket = List[Connection]
@@ -139,7 +139,7 @@ class Layer3(LayerN):
     _node_lookup_requests: Dict[Bytes, NodeLookupRequest]
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, Layer3Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, Layer3Protocol, socket, isolated_logger(LoggerHandlers.LAYER_3))
 
         # Store this node's identifier.
         self._this_identifier = self._stack._layer4._this_identifier

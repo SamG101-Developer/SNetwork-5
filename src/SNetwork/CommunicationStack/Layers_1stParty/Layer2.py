@@ -11,12 +11,12 @@ from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
+from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Json, Bytes, Dict, Optional, List, Str, Int
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
-    from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 
 
 @dataclass(kw_only=True)
@@ -113,7 +113,7 @@ class Layer2(LayerN):
     _external_tunnel_keys: Dict[Bytes, Bytes]  # Route Token => Key
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_2))
 
         # Start listening on the socket for this layer.
         self._logger.debug("Layer 2 Ready")

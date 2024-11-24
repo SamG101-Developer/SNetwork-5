@@ -1,3 +1,5 @@
+import json
+
 import keyring
 from keyrings.alt.file import PlaintextKeyring
 from dataclasses import dataclass
@@ -30,9 +32,9 @@ class KeyManager:
 
         return KeyStoreData(
             identifier=bytes.fromhex(info["identifier"]),
-            secret_key=bytes.fromhex(info["secret_key"].encode()),
-            public_key=bytes.fromhex(info["public_key"].encode()),
-            certificate=X509Certificate.load(bytes.fromhex(info["certificate"])),
+            secret_key=bytes.fromhex(info["secret_key"]),
+            public_key=bytes.fromhex(info["public_key"]),
+            certificate=json.loads(bytes.fromhex(info["certificate"])),
             hashed_username=bytes.fromhex(info["hashed_username"]),
             hashed_password=bytes.fromhex(info["hashed_password"]))
 
@@ -45,9 +47,9 @@ class KeyManager:
             "identifier": identifier.hex(),
             "secret_key": secret_key.hex(),
             "public_key": public_key.hex(),
-            "certificate": certificate.dump().hex(),
-            "hashed_profile_username": hashed_profile_username.hex(),
-            "hashed_profile_password": hashed_profile_password.hex()}
+            "certificate": json.dumps(certificate).encode().hex(),
+            "hashed_username": hashed_profile_username.hex(),
+            "hashed_password": hashed_profile_password.hex()}
         keyring.set_password(KEY_STORE_NAME, hashed_profile_username.hex(), SafeJson.dumps(info).decode())
 
     @staticmethod
