@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 from pqcrypto.sign import dilithium4
+import asn1crypto.core
+import asn1crypto.keys
+import asn1crypto.algos
 
 from SNetwork.Config import MESSAGE_SIGNATURE_TOLERANCE
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
-from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithms
+from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Bool, Bytes, Int
@@ -10,7 +15,7 @@ from SNetwork.Utils.Types import Bool, Bytes, Int
 
 class QuantumSign:
     LOGGER = isolated_logger(LoggerHandlers.CRYPTOGRAPHY)
-    HASH_ALGORITHM = HashAlgorithms.SHA3_256
+    HASH_ALGORITHM = HashAlgorithm.SHA3_256
 
     @staticmethod
     def generate_key_pair() -> AsymmetricKeyPair:
@@ -21,10 +26,10 @@ class QuantumSign:
     def sign(*, secret_key: Bytes, message: Bytes, target_id: Bytes) -> Bytes:
         # Add the target identifier and timestamp to the message and hash it.
         message += target_id + Timestamp.generate_time_stamp()
-        hashed_message = Hasher.hash(value=message, algorithm=QuantumSign.HASH_ALGORITHM)
+        hashed_message = Hasher.hash(data=message, algorithm=QuantumSign.HASH_ALGORITHM)
 
         # Sign the hashed extended message and return the signature.
-        signature = dilithium4.sign(hashed_message, secret_key)
+        signature = dilithium4.sign(secret_key, hashed_message)
         return signature
 
     @staticmethod

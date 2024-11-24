@@ -1,1 +1,52 @@
-{}
+{
+    "username_0": {
+        "username": "username_0",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40001
+    },
+    "username_1": {
+        "username": "username_1",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40002
+    },
+    "username_2": {
+        "username": "username_2",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40003
+    },
+    "username_3": {
+        "username": "username_3",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40004
+    },
+    "username_4": {
+        "username": "username_4",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40005
+    },
+    "username_5": {
+        "username": "username_5",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40006
+    },
+    "username_6": {
+        "username": "username_6",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40007
+    },
+    "username_7": {
+        "username": "username_7",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40008
+    },
+    "username_8": {
+        "username": "username_8",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40009
+    },
+    "username_9": {
+        "username": "username_9",
+        "password": "73899d2adaad774417b0208da85162b61c8dbdf79bb0f7108c2686b93721d1f4",
+        "port": 40010
+    }
+}

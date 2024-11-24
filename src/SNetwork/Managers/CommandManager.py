@@ -2,23 +2,22 @@ import os
 from argparse import Namespace
 
 from SNetwork.Nodes.Node import Node
-from SNetwork.Nodes.DirectoryNode import DirectoryNode
 from SNetwork.Managers.ProfileManager import ProfileManager
 from SNetwork.Utils.Types import NoReturn, Str
 from SNetwork.Utils.Decorators import no_return_interruptable
 
 
-class CommandHandler:
+class CommandManager:
     @staticmethod
     def handle_command(command: Str, arguments: Namespace) -> None:
-        target = getattr(CommandHandler, f"_handle_{str(command).lower()}")(arguments)
+        target = getattr(CommandManager, f"_handle_{str(command).lower()}")(arguments)
         target(arguments)
 
     @staticmethod
     def _handle_profiles(arguments: Namespace) -> None:
         match arguments.profile_command:
             case "create": ProfileManager.create_profile(arguments.username, arguments.password)
-            case "list": ProfileManager.list_profiles()
+            case "list": print("\n".join(ProfileManager.list_profiles()))
 
     @staticmethod
     def _handle_clear(arguments: Namespace) -> None:
@@ -33,8 +32,8 @@ class CommandHandler:
     @staticmethod
     @no_return_interruptable
     def _handle_join(arguments: Namespace) -> NoReturn:
-        hashed_username, port = ProfileManager.validate_profile(arguments.username, arguments.password)
-        node = Node(hashed_username, port)
+        hashed_username, hashed_password, port = ProfileManager.validate_profile(arguments.username, arguments.password)
+        node = Node(hashed_username, hashed_password, port)
         while True: continue
 
     @staticmethod

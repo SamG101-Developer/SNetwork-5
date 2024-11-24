@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from ipaddress import IPv6Address
@@ -6,12 +7,14 @@ from threading import Thread
 from typing import TYPE_CHECKING
 import secrets
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import Connection, LayerN, LayerNProtocol, AbstractRequest
-from SNetwork.Config import DIRECTORY_ADDRESS, DIRECTORY_IDENTIFIER, CONNECTION_TOKEN_LENGTH, DIRECTORY_PORT
-from SNetwork.Crypt.AsymmetricKeys import KeyPair
-from SNetwork.QuantumCrypto.Certificate import X509CertificateSigningRequest, X509Certificate
-from SNetwork.Crypt.Hash import Hasher, SHA3_256
-from SNetwork.Crypt.Sign import Signer
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import Connection, LayerN, LayerNProtocol, InsecureRequest
+from SNetwork.Config import CONNECTION_TOKEN_LENGTH
+from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
+from SNetwork.QuantumCrypto.Certificate import X509, X509Certificate, X509CertificateSigningRequest
+from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
+from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
+from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Json, Bool, Optional, Bytes, Int
 
@@ -26,19 +29,19 @@ class LayerDProtocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class CertificateRequest(AbstractRequest):
+class CertificateRequest(InsecureRequest):
     identifier: Bytes
     public_key: Bytes
     certificate: Bytes
 
 
 @dataclass(kw_only=True)
-class CertificateResponse(AbstractRequest):
+class CertificateResponse(InsecureRequest):
     certificate: Bytes
 
 
 @dataclass(kw_only=True)
-class InvalidCertificateRequest(AbstractRequest):
+class InvalidCertificateRequest(InsecureRequest):
     identifier: Bytes
     public_key: Bytes
 
@@ -55,12 +58,12 @@ class LayerD(LayerN):
     """
 
     _this_identifier: Optional[Bytes]
-    _this_static_key_pair: Optional[KeyPair]
+    _this_static_key_pair: Optional[AsymmetricKeyPair]
     _is_directory_service: Bool
     _waiting_for_certificate: Bool
     _certificate: Optional[X509Certificate]
 
-    def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_static_key_pair: Optional[KeyPair] = None) -> None:
+    def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
         super().__init__(stack, None, socket, isolated_logger(LoggerHandlers.LAYER_D))
 
         self._this_identifier = None
@@ -73,32 +76,39 @@ class LayerD(LayerN):
         self._logger.debug("Layer D Ready")
 
     def join_network(self) -> None:
+        # Choose a random directory service to connect to.
+        d_address, d_port, d_identifier = DirectoryServiceManager.get_random_directory_service()
+
         # Create a temporary, unencrypted connection to the directory service.
         temp_connection = Connection(
-            that_address=DIRECTORY_ADDRESS,
-            that_port=DIRECTORY_PORT,
-            that_identifier=DIRECTORY_IDENTIFIER,
+            that_address=d_address,
+            that_port=d_port,
+            that_identifier=d_identifier,
             connection_token=secrets.token_bytes(CONNECTION_TOKEN_LENGTH))
 
         # Create an asymmetric key pair, and an identifier based on the public key.
-        this_static_key_pair = Signer.generate_key_pair()
-        this_unique_identifier = Hasher.hash(this_static_key_pair.public_key.der, SHA3_256())
+        this_static_key_pair = QuantumSign.generate_key_pair()
+        this_unique_identifier = Hasher.hash(this_static_key_pair.public_key, HashAlgorithm.SHA3_256)
 
         # Create a certificate singing request for the directory service.
-        this_certificate_request = X509CertificateSigningRequest.from_attributes(
-            identifier=this_unique_identifier,
-            secret_key=this_static_key_pair.secret_key)
+        this_certificate_request = X509.generate_certificate_signing_request(
+            client_identifier=this_unique_identifier,
+            client_secret_key=this_static_key_pair.secret_key,
+            client_public_key=this_static_key_pair.public_key,
+            directory_service_identifier=d_identifier)
+        self._logger.debug("Certificate Request Created")
 
         # Package the information into a request for the directory service.
         self._waiting_for_certificate = True
         self._send(temp_connection, CertificateRequest(
             identifier=this_unique_identifier,
-            public_key=this_static_key_pair.public_key.der,
-            certificate=this_certificate_request.der))
+            public_key=this_static_key_pair.public_key,
+            certificate=SafeJson.dumps(this_certificate_request)))
+        self._logger.debug("Certificate Request Sent")
 
     def _handle_certificate_request(self, address: IPv6Address, port: Int, request: CertificateRequest) -> None:
         # Extract metadata from the request and create a non-cached, 1-time connection.
-        certificate_request = X509CertificateSigningRequest.from_der(request.certificate)
+        certificate_request = SafeJson.loads(request.certificate)
         temp_connection = Connection(
             that_address=address,
             that_port=port,
@@ -106,30 +116,40 @@ class LayerD(LayerN):
             connection_token=request.connection_token)
 
         # Ensure the public key and identifier match.
-        if Hasher.hash(request.public_key, SHA3_256()) != request.identifier:
+        if Hasher.hash(request.public_key, HashAlgorithm.SHA3_256) != request.identifier:
             self._send(temp_connection, InvalidCertificateRequest(
                 identifier=request.identifier,
                 public_key=request.public_key))
 
         # Create the signed certificate, and send it back to the requester.
-        certificate = X509Certificate.from_request(certificate_request, self._this_static_key_pair.secret_key)
-        self._send(temp_connection, CertificateResponse(
-            certificate=certificate.der))
+        certificate = X509.generate_certificate(
+            client_identifier=request.identifier,
+            client_request=certificate_request,
+            directory_service_secret_key=self._this_static_key_pair.secret_key,
+            directory_service_identifier=self._this_identifier)
+
+        self._send(temp_connection, CertificateResponse(certificate=SafeJson.dumps(certificate)))
 
     def _handle_certificate_response(self, address: IPv6Address, port: Int, request: CertificateResponse) -> None:
         # Extract the certificate from the request.
-        certificate = X509Certificate.from_der(request.certificate)
+        certificate: X509Certificate = SafeJson.loads(request.certificate)
 
         # Check the certificate was signed by the directory service.
-        ...
+        if not QuantumSign.verify(
+                public_key=self._this_static_key_pair.public_key,
+                message=SafeJson.dumps(certificate["tbs_certificate"]),
+                signature=certificate["signature_value"],
+                target_id=self._this_identifier):
+            self._logger.error("Invalid certificate signature.")
+            return
 
         # Check the identifier on the certificate matches the expected one (anti-tamper).
-        if certificate.subject != self._this_identifier:
+        if certificate["tbs_certificate"]["subject"]["common_name"] != self._this_identifier.hex():
             self._logger.error("Invalid certificate identifier.")
             return
 
         # Check the public key on the certificate matches the expected one (anti-tamper).
-        if certificate.public_key.der != self._this_static_key_pair.public_key.der:
+        if certificate["tbs_certificate"]["subject_public_key_info"]["public_key"] != self._this_static_key_pair.public_key:
             self._logger.error("Invalid certificate public key.")
             return
 
@@ -158,6 +178,8 @@ class LayerD(LayerN):
                 thread = Thread(target=self._handle_invalid_certificate_request, args=(address, port, request))
                 thread.start()
 
-    def _send(self, connection: Connection, request: AbstractRequest) -> None:
-        protocol = LayerDProtocol(request.__class__.__name__)
-        pass
+    def _send(self, connection: Connection, request: InsecureRequest) -> None:
+        self._logger.debug(f"Sent {request.protocol.name} to {connection.that_identifier}")
+        self._logger.debug(request)
+        super()._send(connection, request)
+        raise

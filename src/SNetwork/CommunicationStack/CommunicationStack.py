@@ -4,7 +4,7 @@ from socket import socket as Socket, SOCK_DGRAM, AF_INET6
 from threading import Thread
 
 from SNetwork.CommunicationStack.Layers_1stParty.Layer1 import Layer1
-from SNetwork.CommunicationStack.Layers_1stParty.Layer2_old import Layer2
+from SNetwork.CommunicationStack.Layers_1stParty.Layer2 import Layer2
 from SNetwork.CommunicationStack.Layers_1stParty.Layer3 import Layer3
 from SNetwork.CommunicationStack.Layers_1stParty.Layer4 import Layer4
 from SNetwork.CommunicationStack.Layers_2ndParty.LayerHTTP.LayerHttp import LayerHTTP
@@ -32,7 +32,7 @@ class CommunicationStack:
     def __init__(self, hashed_username: Bytes, port: Int):
         # Create the sockets for the stack.
         self._port = port
-        self._socket_ln = Socket(family=SOCK_DGRAM, type=AF_INET6)
+        self._socket_ln = Socket(family=AF_INET6, type=SOCK_DGRAM)
 
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))

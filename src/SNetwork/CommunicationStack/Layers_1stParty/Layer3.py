@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
@@ -9,7 +10,8 @@ import math, operator, random, time
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, InsecureRequest
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH
-from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithms
+from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
+from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float, Str
 
 if TYPE_CHECKING:
@@ -170,7 +172,7 @@ class Layer3(LayerN):
 
     def get_resource(self, key: Bytes) -> Bool:
         # Hash the key to get the resource key, and lookup the node closest to the resource key.
-        resource_key = Hasher.hash(key, HashAlgorithms.SHA3_256())
+        resource_key = Hasher.hash(key, HashAlgorithm.SHA3_256())
         self._node_lookup(resource_key, find_value=True)
 
         # Wait for the resource key to be stored, and return True if it is.
@@ -179,7 +181,7 @@ class Layer3(LayerN):
 
     def put_resource(self, key: Bytes, value: Bytes) -> None:
         # Hash the key to get the resource key, and find the k closest nodes to the resource key.
-        resource_key = Hasher.hash(key, HashAlgorithms.SHA3_256())
+        resource_key = Hasher.hash(key, HashAlgorithm.SHA3_256())
         closest_k = sorted(self._all_known_nodes, key=lambda n: node_distance(n.identifier, resource_key))[:DHT_K_VALUE]
 
         # Send the resource to the k closest nodes.
@@ -251,7 +253,7 @@ class Layer3(LayerN):
                 k_bucket.append(head_node)
 
     def _closest_k_nodes_to(self, target_identifier: Bytes) -> KBucket:
-        node_distances = [(c, node_distance(c.identifier, target_identifier)) for c in self._all_known_nodes]
+        node_distances = [(c, node_distance(c.that_identifier, target_identifier)) for c in self._all_known_nodes]
         node_distances.sort(key=operator.itemgetter(1))
         closest_nodes = [c for c, _ in node_distances[:DHT_K_VALUE]]
         return closest_nodes
@@ -328,7 +330,7 @@ class Layer3(LayerN):
     def _handle_put_resource_request(self, request: PutResourceRequest) -> None:
         # Store the key and value in the DHT.
         self._stored_keys.append(request.resource_key)
-        with open(DHT_STORE_PATH % request.resource_key.hex(), "wb") as fo:
+        with SafeFileOpen(DHT_STORE_PATH % request.resource_key.hex(), "wb") as fo:
             fo.write(request.resource_value)
 
     def _handle_get_resource_request(self, request: GetResourceRequest) -> None:
@@ -338,7 +340,7 @@ class Layer3(LayerN):
 
         # Check if this node is hosting the requested key.
         if resource_key in self._stored_keys:
-            with open(DHT_STORE_PATH % resource_key.hex(), "rb") as fo:
+            with SafeFileOpen(DHT_STORE_PATH % resource_key.hex(), "rb") as fo:
                 resource_value = fo.read()
             response = ReturnResourcePassResponse(resource_key=resource_key, resource_value=resource_value)
             self._send_secure(connection, response)
@@ -362,7 +364,7 @@ class Layer3(LayerN):
 
         # Store the key and value in the DHT.
         self._stored_keys.append(resource_key)
-        with open(DHT_STORE_PATH % resource_key.hex(), "wb") as fo:
+        with SafeFileOpen(DHT_STORE_PATH % resource_key.hex(), "wb") as fo:
             fo.write(request.resource_value)
 
     def _handle_return_resource_fail_response(self, request: ReturnResourceFailResponse) -> None:

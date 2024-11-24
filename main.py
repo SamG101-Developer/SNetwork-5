@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 from argparse import ArgumentParser
 from argformat.formatter import StructuredFormatter
 
-from SNetwork.Managers.CommandManager import CommandHandler
+from SNetwork.Managers.CommandManager import CommandManager
 
 
 class ErrorArgumentParser(ArgumentParser):
@@ -52,7 +52,7 @@ def create_argument_parser() -> ArgumentParser:
 def main() -> None:
     parser = create_argument_parser()
     args = parser.parse_args(sys.argv[1:])
-    CommandHandler.handle_command(args.command, args)
+    CommandManager.handle_command(args.command, args)
 
 
 if __name__ == "__main__":

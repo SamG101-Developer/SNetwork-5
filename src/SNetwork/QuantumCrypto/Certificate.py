@@ -1,84 +1,85 @@
 from __future__ import annotations
+from typing import TypedDict
+import datetime as dt, secrets
 
-from cryptography import x509
-from cryptography.hazmat.primitives.serialization import Encoding
-
-from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
-from SNetwork.Crypt.Hash import SHA3_256
-from SNetwork.Utils.Types import Bytes
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
+from SNetwork.Utils.Json import SafeJson
+from SNetwork.Utils.Types import Bytes, Json
 
 
-class X509Certificate:
-    _certificate: x509.Certificate
+class X509CertificateSigningRequestInfo(TypedDict):
+    subject: dict[str, str]
+    subject_pk_info: dict[str, str]
 
-    def __init__(self, certificate: x509.Certificate) -> None:
-        self._certificate = certificate
+
+class X509CertificateSigningRequest(TypedDict):
+    certification_request_info: X509CertificateSigningRequestInfo
+    signature_algorithm: dict[str, str]
+    signature_value: Bytes
+
+
+class X509TbsCertificate(TypedDict):
+    version: str
+    serial_number: int
+    signature: dict[str, str]
+    issuer: dict[str, str]
+    validity: dict[str, str]
+    subject: dict[str, str]
+    subject_public_key_info: dict[str, str]
+
+
+class X509Certificate(TypedDict):
+    tbs_certificate: X509TbsCertificate
+    signature_algorithm: dict[str, str]
+    signature_value: Bytes
+
+
+class X509:
+    @staticmethod
+    def generate_certificate_signing_request(
+            client_identifier: Bytes,
+            client_secret_key: Bytes,
+            client_public_key: Bytes,
+            directory_service_identifier: Bytes) -> Json:
+
+        request_info = X509CertificateSigningRequestInfo(
+            subject={"common_name": client_identifier.hex()},
+            subject_pk_info={"public_key": client_public_key.hex()})
+
+        request = X509CertificateSigningRequest(
+            certification_request_info=request_info,
+            signature_algorithm={"algorithm": "dilithium4"},
+            signature_value=QuantumSign.sign(secret_key=client_secret_key, message=SafeJson.dumps(request_info), target_id=directory_service_identifier))
+
+        return request
 
     @staticmethod
-    def from_request(csr: X509CertificateSigningRequest, directory_service_secret_key: SecKey) -> X509Certificate:
-        builder = x509.CertificateBuilder()
-        builder = builder.subject_name(csr._request.subject)
-        builder = builder.issuer_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "Directory Service")]))
-        builder = builder.public_key(csr._request.public_key())
-        builder = builder.serial_number(x509.random_serial_number())
-        builder = builder.add_extension(csr._request.extensions.get_extension_for_oid(x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value, critical=False)
-        certificate = builder.sign(directory_service_secret_key._secret_key, SHA3_256())
-        return X509Certificate(certificate)
+    def generate_certificate(
+            client_request: Json,
+            client_identifier: Bytes,
+            directory_service_secret_key: Bytes,
+            directory_service_identifier: Bytes) -> Json:
 
-    @staticmethod
-    def from_der(der: Bytes) -> X509Certificate:
-        return X509Certificate(x509.load_der_x509_certificate(der))
+        tbs_certificate = X509TbsCertificate(
+            version="v3",
+            serial_number=int.from_bytes(secrets.token_bytes(20)),
+            signature={"algorithm": "dilithium4"},
+            issuer={"common_name": directory_service_identifier.hex()},
+            validity={
+                "not_before": dt.datetime.now(dt.UTC).isoformat(),
+                "not_after": (dt.datetime.now(dt.UTC) + dt.timedelta(days=365)).isoformat()},
+            subject=client_request["certification_request_info"]["subject"],
+            subject_public_key_info={"public_key": client_request["certification_request_info"]["subject_pk_info"]["public_key"]})
 
-    @staticmethod
-    def from_pem(pem: Bytes) -> X509Certificate:
-        return X509Certificate(x509.load_pem_x509_certificate(pem))
+        certificate = X509Certificate(
+            tbs_certificate=tbs_certificate,
+            signature_algorithm={"algorithm": "dilithium4"},
+            signature_value=QuantumSign.sign(
+                secret_key=directory_service_secret_key,
+                message=SafeJson.dumps(tbs_certificate),
+                target_id=directory_service_identifier))
 
-    @property
-    def der(self) -> Bytes:
-        return self._certificate.public_bytes(Encoding.DER)
-
-    @property
-    def pem(self) -> Bytes:
-        return self._certificate.public_bytes(Encoding.PEM)
-
-    @property
-    def public_key(self) -> PubKey:
-        return PubKey(self._certificate.public_key())
-
-    @property
-    def subject(self) -> bytes:
-        return self._certificate.subject.public_bytes()
+        return certificate
 
 
-class X509CertificateSigningRequest:
-    _request: x509.CertificateSigningRequest
-
-    def __init__(self, request: x509.CertificateSigningRequest) -> None:
-        self._request = request
-
-    @staticmethod
-    def from_attributes(identifier: Bytes, secret_key: SecKey) -> X509CertificateSigningRequest:
-        builder = x509.CertificateSigningRequestBuilder()
-        builder = builder.subject_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, identifier.decode())]))
-        builder = builder.add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        request = builder.sign(secret_key._secret_key, SHA3_256())
-        return X509CertificateSigningRequest(request)
-
-    @staticmethod
-    def from_der(der: Bytes) -> X509CertificateSigningRequest:
-        return X509CertificateSigningRequest(x509.load_der_x509_csr(der))
-
-    @staticmethod
-    def from_pem(pem: Bytes) -> X509CertificateSigningRequest:
-        return X509CertificateSigningRequest(x509.load_pem_x509_csr(pem))
-
-    @property
-    def der(self) -> Bytes:
-        return self._request.public_bytes(Encoding.DER)
-
-    @property
-    def pem(self) -> Bytes:
-        return self._request.public_bytes(Encoding.PEM)
-
-
-__all__ = ["X509Certificate", "X509CertificateSigningRequest"]
+__all__ = ["X509"]

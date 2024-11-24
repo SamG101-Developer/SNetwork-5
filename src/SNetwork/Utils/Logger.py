@@ -1,6 +1,6 @@
 from enum import Enum
 from logging import Logger
-import logging
+import logging, sys
 
 
 class LoggerHandlers(Enum):
@@ -21,7 +21,7 @@ def isolated_logger(logger_name: LoggerHandlers) -> Logger:
 
     # Only add a handler if one does not already exist.
     if not logger.handlers:
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(f"[{logger_name}] %(asctime)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)

@@ -2,7 +2,6 @@ import keyring
 from keyrings.alt.file import PlaintextKeyring
 from dataclasses import dataclass
 
-from SNetwork.Crypt.AsymmetricKeys import PubKey, SecKey
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Types import Bytes, Bool, Optional
@@ -15,8 +14,8 @@ keyring.set_keyring(PlaintextKeyring())
 @dataclass(kw_only=True, frozen=True)
 class KeyStoreData:
     identifier: Bytes
-    secret_key: SecKey
-    public_key: PubKey
+    secret_key: Bytes
+    public_key: Bytes
     certificate: X509Certificate
     hashed_username: Bytes
     hashed_password: Bytes
@@ -31,22 +30,22 @@ class KeyManager:
 
         return KeyStoreData(
             identifier=bytes.fromhex(info["identifier"]),
-            secret_key=SecKey.from_pem(info["secret_key"].encode()),
-            public_key=PubKey.from_pem(info["public_key"].encode()),
-            certificate=X509Certificate.from_pem(info["certificate"].encode()),
+            secret_key=bytes.fromhex(info["secret_key"].encode()),
+            public_key=bytes.fromhex(info["public_key"].encode()),
+            certificate=X509Certificate.load(bytes.fromhex(info["certificate"])),
             hashed_username=bytes.fromhex(info["hashed_username"]),
             hashed_password=bytes.fromhex(info["hashed_password"]))
 
     @staticmethod
     def set_info(
-            *, identifier: Bytes, secret_key: SecKey, public_key: PubKey, certificate: X509Certificate,
+            *, identifier: Bytes, secret_key: Bytes, public_key: Bytes, certificate: X509Certificate,
             hashed_profile_username: Bytes, hashed_profile_password: Bytes) -> None:
 
         info = {
             "identifier": identifier.hex(),
-            "secret_key": secret_key.pem.decode(),
-            "public_key": public_key.pem.decode(),
-            "certificate": certificate.pem.decode(),
+            "secret_key": secret_key.hex(),
+            "public_key": public_key.hex(),
+            "certificate": certificate.dump().hex(),
             "hashed_profile_username": hashed_profile_username.hex(),
             "hashed_profile_password": hashed_profile_password.hex()}
         keyring.set_password(KEY_STORE_NAME, hashed_profile_username.hex(), SafeJson.dumps(info).decode())

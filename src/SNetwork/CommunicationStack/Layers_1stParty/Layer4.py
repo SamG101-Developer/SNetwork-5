@@ -11,7 +11,7 @@ from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNPro
     ConnectionState, InsecureRequest, SecureRequest
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
-from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithms
+from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
@@ -151,7 +151,7 @@ class Layer4(LayerN):
         wrapped_key = SymmetricEncryption.wrap_new_key(current_key=current_key, new_key=new_key)
 
         # Hash the current key and increment the key rotation counter.
-        current_key_hashed = Hasher.hash(value=current_key, algorithm=HashAlgorithms.SHA3_256())
+        current_key_hashed = Hasher.hash(data=current_key, algorithm=HashAlgorithm.SHA3_256())
         connection.key_rotations += 1
         connection.e2e_primary_keys[connection.key_rotations * 100] = new_key
 
@@ -282,7 +282,7 @@ class Layer4(LayerN):
 
         # Check if the current key matches the hashed key.
         current_key = list(connection.e2e_primary_keys.values())[-1]
-        current_key_hashed = Hasher.hash(value=current_key, algorithm=HashAlgorithms.SHA3_256())
+        current_key_hashed = Hasher.hash(data=current_key, algorithm=HashAlgorithm.SHA3_256())
         if current_key_hashed != request.cur_key_hashed:
             self._send(connection, ConnectionClose(reason="Invalid current key hash."))
             return
