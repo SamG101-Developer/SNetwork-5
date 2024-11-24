@@ -113,7 +113,7 @@ class Layer2(LayerN):
     _external_tunnel_keys: Dict[Bytes, Bytes]  # Route Token => Key
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
 
         # Start listening on the socket for this layer.
         self._logger.debug("Layer 2 Ready")

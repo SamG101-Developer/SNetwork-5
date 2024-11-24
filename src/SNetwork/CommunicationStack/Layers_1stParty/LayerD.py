@@ -64,7 +64,7 @@ class LayerD(LayerN):
     _certificate: Optional[X509Certificate]
 
     def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
-        super().__init__(stack, None, socket, isolated_logger(LoggerHandlers.LAYER_D))
+        super().__init__(stack, None, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
 
         self._this_identifier = None
         self._this_static_key_pair = this_static_key_pair
@@ -177,6 +177,3 @@ class LayerD(LayerN):
             case LayerDProtocol.InvalidCertificateRequest.value if self._waiting_for_certificate:
                 thread = Thread(target=self._handle_invalid_certificate_request, args=(address, port, request))
                 thread.start()
-
-    def _send(self, connection: Connection, request: InsecureRequest) -> None:
-        super()._send(connection, request)

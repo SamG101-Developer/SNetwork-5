@@ -91,7 +91,7 @@ class Layer4(LayerN):
     _cached_public_keys: Dict[Bytes, Bytes]
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, Layer4Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
 
         # Get the node identifier and static secret key.
         self._this_identifier = node_info.identifier

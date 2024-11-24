@@ -122,10 +122,11 @@ class LayerN:
 
     _stack: CommunicationStack
     _node_info: Optional[KeyStoreData]
+    _protocol: Type[LayerNProtocol]
     _socket: Socket
     _logger: Logger
 
-    def __init__(self, stack: CommunicationStack, node_info: Optional[KeyStoreData], socket: Socket, logger: Logger):
+    def __init__(self, stack: CommunicationStack, node_info: Optional[KeyStoreData], protocol: Type[LayerNProtocol], socket: Socket, logger: Logger):
         """
         The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
         data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
@@ -136,6 +137,7 @@ class LayerN:
         # Initialize the layer's connection attributes.
         self._socket = socket
         self._node_info = node_info
+        self._protocol = protocol
         self._stack = stack
         self._logger = logger
 
@@ -183,7 +185,7 @@ class LayerN:
         self._logger.debug(f"Sending encrypted '{protocol.name}' request to {connection.that_identifier.hex()}")
         self._socket.sendto(encoded_data, (connection.that_address.exploded, connection.that_port))
 
-    def _prep_data(self, connection: Connection, request: AbstractRequest) -> AbstractRequest:
+    def _prep_data(self, connection: Connection, request: InsecureRequest) -> AbstractRequest:
         """
         This method is used to prepare the data to be sent to a connection. The data has the connection stored under the
         "token" key, and a random message ID added to, for re-sending malformed messages. The data is then dumped to
@@ -194,5 +196,6 @@ class LayerN:
         request.connection_token = connection.connection_token
         request.that_identifier = connection.that_identifier
         request.stack_layer = type(self).__name__[-1]
+        request.protocol = getattr(self._protocol, type(request).__name__)
         request.message_number = connection.message_sent_number
         return request

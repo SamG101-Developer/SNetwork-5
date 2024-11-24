@@ -139,7 +139,7 @@ class Layer3(LayerN):
     _node_lookup_requests: Dict[Bytes, NodeLookupRequest]
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, Layer3Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
 
         # Store this node's identifier.
         self._this_identifier = self._stack._layer4._this_identifier
