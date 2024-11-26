@@ -1,11 +1,11 @@
 from ipaddress import IPv6Address
 import json, pathlib, random, socket
 
-from SNetwork.Config import DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE
+from SNetwork.Config import DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, TESTING_PORT_ADJUST
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.Utils.Files import SafeFileOpen
-from SNetwork.Utils.Types import Bytes, Int, Str, Bool
+from SNetwork.Utils.Types import Bytes, Int, Bool
 
 
 class DirectoryServiceManager:
@@ -58,4 +58,4 @@ class DirectoryServiceManager:
         # Choose a random directory service to connect to.
         name = random.choice(list(directory_services.keys()))
         entry = directory_services[name]
-        return IPv6Address(entry["address"]), entry["port"], bytes.fromhex(entry["identifier"])
+        return IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"])

@@ -1,10 +1,8 @@
-import json
-import subprocess
-import time
 from threading import Thread, Lock
+import json, subprocess
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QMouseEvent, QIcon
+from PyQt6.QtGui import QFont, QMouseEvent
 from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QApplication, QDialog
 
 from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE
@@ -157,8 +155,8 @@ def create_directory_services() -> None:
         DirectoryServiceManager.new_directory_service(f"snetwork.directory-service.{i}")
 
 
-def create_nodes(n) -> None:
-    for i in range(n):
+def create_nodes(n: int, offset: int = 0) -> None:
+    for i in range(offset, n + offset):
         username, password = (f"username_{i}", "pass")
         ProfileManager.create_profile(username, password)
         command = f".venv/Scripts/python main.py profile create --name {username} --pass {password}"
@@ -170,7 +168,7 @@ if __name__ == "__main__":
 
     sys.excepthook = lambda e, v, t: sys.__excepthook__(e, v, t)
     # create_directory_services()
-    create_nodes(NODE_COUNT)
+    # create_nodes(NODE_COUNT)
     app = QApplication(sys.argv)
     window = TestGui()
     sys.exit(app.exec())

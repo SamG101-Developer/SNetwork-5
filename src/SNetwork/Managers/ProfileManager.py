@@ -1,6 +1,6 @@
 import logging, json
 
-from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE
+from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, TESTING_PORT_ADJUST
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.Utils.Files import SafeFileOpen
@@ -53,7 +53,7 @@ class ProfileManager:
             return None
 
         # Return the hashed username and port.
-        return hashed_username, hashed_password, current_profiles[username]["port"]
+        return hashed_username, hashed_password, current_profiles[username]["port"] + TESTING_PORT_ADJUST
 
     @staticmethod
     def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int, Bytes, AsymmetricKeyPair]]:
@@ -74,7 +74,7 @@ class ProfileManager:
                 secret_key=bytes.fromhex(private_information["secret_key"]))
 
         # Return the hashed username and port.
-        return hashed_username, hashed_password, current_profiles[username]["port"], identifier, static_key_pair
+        return hashed_username, hashed_password, current_profiles[username]["port"] + TESTING_PORT_ADJUST, identifier, static_key_pair
 
     @staticmethod
     def list_profiles() -> List[Str]:

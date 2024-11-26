@@ -27,3 +27,5 @@ DIRECTORY_SERVICE_PRIVATE_FILE = "profiles/directory-service-servers/%s.json"
 # Cryptographic constants.
 IDENTIFIER_LENGTH = 32
 MESSAGE_SIGNATURE_TOLERANCE = 60
+
+TESTING_PORT_ADJUST = 100
