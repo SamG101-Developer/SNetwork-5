@@ -15,11 +15,10 @@ from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
-from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 
 if TYPE_CHECKING:
-    from SNetwork.Utils.Types import Bytes, Callable, Optional, Dict, Json, Int, Str
+    from SNetwork.Utils.Types import Bytes, Optional, Dict, Json, Int, Str
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
 
@@ -34,7 +33,7 @@ class Layer4Protocol(LayerNProtocol, Enum):
 
 @dataclass(kw_only=True)
 class ConnectionRequest(RawRequest):
-    certificate: Bytes
+    certificate: X509Certificate
     ephemeral_public_key: Bytes
     signature: Bytes
 
@@ -135,7 +134,7 @@ class Layer4(LayerN):
 
         # Create the JSON request to request a connection. Include the certificate and signed ephemeral public key.
         self._send(connection, ConnectionRequest(
-            certificate=SafeJson.dumps(self._this_certificate),
+            certificate=self._this_certificate,
             ephemeral_public_key=this_ephemeral_key_pair.public_key,
             signature=this_ephemeral_public_key_signed))
 
@@ -213,7 +212,7 @@ class Layer4(LayerN):
         if not request.certificate.verify_with(self._directory_service_public_key):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
-        that_static_public_key = SafeJson.loads(request.certificate)["tbs_certificate"]["subject_public_key_info"]["public_key"]
+        that_static_public_key = request.certificate["tbs_certificate"]["subject_public_key_info"]["public_key"]
 
         # Verify the signature of the ephemeral public key.
         verification = QuantumSign.verify(

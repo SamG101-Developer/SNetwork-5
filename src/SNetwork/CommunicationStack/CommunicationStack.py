@@ -1,4 +1,5 @@
 import logging
+import pickle
 from ipaddress import IPv6Address
 from socket import socket as Socket, SOCK_DGRAM, AF_INET6
 from threading import Thread
@@ -13,7 +14,6 @@ from SNetwork.CommunicationStack.Layers_2ndParty.LayerHTTP.LayerHttp import Laye
 from SNetwork.Config import DEFAULT_IPV6
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Managers.KeyManager import KeyStoreData
-from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Bytes, Int
 
@@ -28,6 +28,7 @@ class CommunicationStack:
     _layer2: Layer2
     _layer3: Layer3
     _layer4: Layer4
+    _layerD: LayerD
 
     _port: Int
     _socket_ln: Socket
@@ -45,18 +46,19 @@ class CommunicationStack:
     def __del__(self) -> None:
         self._socket_ln and self._socket_ln.close()
 
-    def start(self, info: KeyStoreData) -> None:
+    def start(self, info: KeyStoreData, layerD: LayerD) -> None:
         # Create the layers of the stack.
         self._layer4 = Layer4(self, info, self._socket_ln)
         self._layer3 = Layer3(self, info, self._socket_ln)
         self._layer2 = Layer2(self, info, self._socket_ln)
         self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self))
+        self._layerD = layerD
         self._listen()
 
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
-            data, address = self._socket_ln.recvfrom(4096)
+            data, address = self._socket_ln.recvfrom(8192)
             request = AbstractRequest.deserialize(data)  # error handler -> json error back to sender
             if not request: continue
 
@@ -70,7 +72,7 @@ class CommunicationStack:
                 if token in self._layer4._conversations.keys() and self._layer4._conversations[token].is_accepted():
                     e2e_key = self._layer4._conversations[token].e2e_primary_keys[int(request.request_metadata.message_number) // 100]
                     decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
-                    decrypted_json = SafeJson.loads(decrypted_data)
+                    decrypted_json = pickle.loads(decrypted_data)
                     request = decrypted_json
 
                 # Otherwise, the connection is unknown, and the request is ignored.
@@ -79,7 +81,7 @@ class CommunicationStack:
                     continue
 
             # Handle non-secure requests
-            Thread(target=globals()[f"Layer{request.request_metadata.stack_layer}"]._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
+            Thread(target=getattr(self, f"_layer{request.request_metadata.stack_layer}")._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
 
 
 __all__ = ["CommunicationStack"]

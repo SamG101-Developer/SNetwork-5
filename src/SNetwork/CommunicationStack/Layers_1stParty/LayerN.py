@@ -1,18 +1,16 @@
 from __future__ import annotations
-
-import pickle
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
 from logging import Logger
 from socket import socket as Socket
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
+import pickle
 
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Types import Bytes, Callable, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
-from SNetwork.Utils.Json import SafeJson
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -85,10 +83,6 @@ class AbstractRequest:
         # Deserialize the fields, with ".hex() => byte" conversion.
         result = pickle.loads(data)
         return result
-
-    @staticmethod
-    def deserialize_to_json(data: Bytes) -> Json:
-        return SafeJson.loads(data)
 
     def __str__(self) -> str:
         return "\n".join([f"{key} = {value}" for key, value in self.__dict__.items()])

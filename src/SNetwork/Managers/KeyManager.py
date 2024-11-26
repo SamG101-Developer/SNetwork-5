@@ -5,7 +5,6 @@ from keyrings.alt.file import PlaintextKeyring
 from dataclasses import dataclass
 
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
-from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Types import Bytes, Bool, Optional
 from SNetwork.Config import KEY_STORE_NAME
 
@@ -26,7 +25,7 @@ class KeyStoreData:
 class KeyManager:
     @staticmethod
     def get_info(hashed_username: Bytes) -> Optional[KeyStoreData]:
-        info = SafeJson.loads(keyring.get_password(KEY_STORE_NAME, hashed_username.hex()))
+        info = json.loads(keyring.get_password(KEY_STORE_NAME, hashed_username.hex()))
         if not info:
             return None
 
@@ -50,7 +49,7 @@ class KeyManager:
             "certificate": json.dumps(certificate).encode().hex(),
             "hashed_username": hashed_profile_username.hex(),
             "hashed_password": hashed_profile_password.hex()}
-        keyring.set_password(KEY_STORE_NAME, hashed_profile_username.hex(), SafeJson.dumps(info).decode())
+        keyring.set_password(KEY_STORE_NAME, hashed_profile_username.hex(), json.dumps(info))
 
     @staticmethod
     def has_info(hashed_profile_username: Bytes) -> Bool:
