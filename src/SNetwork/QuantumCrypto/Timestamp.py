@@ -8,8 +8,10 @@ from SNetwork.Config import MESSAGE_SIGNATURE_TOLERANCE
 class Timestamp:
     @staticmethod
     def generate_time_stamp() -> Bytes:
-        return struct.pack("!d", time.time())
+        packed_time = struct.pack("!d", time.time())
+        return packed_time
 
     @staticmethod
     def check_time_stamp(time_stamp: Bytes, tolerance: Int = MESSAGE_SIGNATURE_TOLERANCE) -> bool:
-        return time.time() - struct.unpack("!d", time_stamp)[0] < tolerance
+        unpacked_time = struct.unpack("!d", time_stamp)[0]
+        return time.time() - unpacked_time < tolerance

@@ -12,7 +12,7 @@ from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolat
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
-from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
@@ -35,13 +35,13 @@ class Layer4Protocol(LayerNProtocol, Enum):
 class ConnectionRequest(RawRequest):
     certificate: X509Certificate
     ephemeral_public_key: Bytes
-    signature: Bytes
+    signature: SignedMessagePair
 
 
 @dataclass(kw_only=True)
 class ConnectionAccept(RawRequest):
     kem_master_key: Bytes
-    signature: Bytes
+    signature: SignedMessagePair
 
 
 @dataclass(kw_only=True)
@@ -118,9 +118,9 @@ class Layer4(LayerN):
         # Generate an ephemeral public key pair for this connection exclusively + sign.
         this_ephemeral_key_pair = QuantumKem.generate_key_pair()
         this_ephemeral_public_key_signed = QuantumSign.sign(
-            secret_key=self._this_static_secret_key,
-            message=this_ephemeral_key_pair.public_key,
-            target_id=connection_token + that_identifier)
+            skey=self._this_static_secret_key,
+            msg=this_ephemeral_key_pair.public_key,
+            id_=connection_token + that_identifier)
 
         # Create the Connection object to track the conversation.
         connection = Connection(
@@ -207,20 +207,21 @@ class Layer4(LayerN):
             connection_token=metadata.connection_token, connection_state=ConnectionState.PendingConnection,
             that_ephemeral_public_key=request.ephemeral_public_key)
         self._conversations[connection.connection_token] = connection
+        session_id = connection.connection_token + self._this_identifier
 
         # Verify the certificate of the remote node.
         if not request.certificate.verify_with(self._directory_service_public_key):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
-        that_static_public_key = request.certificate["tbs_certificate"]["subject_public_key_info"]["public_key"]
+        that_static_public_key = request.certificate.tbs_certificate.subject_pk_info["public_key"]
 
         # Verify the signature of the ephemeral public key.
-        verification = QuantumSign.verify(
-            public_key=that_static_public_key, message=request.ephemeral_public_key, signature=request.signature,
-            target_id=metadata.connection_token + self._this_identifier)
+        verification = QuantumSign.verify(pkey=that_static_public_key, sig=request.signature, id_=session_id)
+
         if not verification:
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
+
         self._cached_public_keys[metadata.that_identifier] = that_static_public_key
 
         # Validate the connection token's timestamp is within the tolerance.
@@ -231,9 +232,9 @@ class Layer4(LayerN):
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.ephemeral_public_key)
         signature = QuantumSign.sign(
-            secret_key=self._this_static_secret_key,
-            message=kem_wrapped_key.encapsulated,
-            target_id=connection.connection_token + connection.that_identifier)
+            skey=self._this_static_secret_key,
+            msg=kem_wrapped_key.encapsulated,
+            id_=connection.connection_token + connection.that_identifier)
         connection.e2e_primary_keys[0] = kem_wrapped_key.decapsulated
 
         # Create a new request responding to the handshake request.
@@ -249,13 +250,10 @@ class Layer4(LayerN):
         # Get the connection object for this request.
         metadata = request.request_metadata
         connection = self._conversations[metadata.connection_token]
+        session_id = connection.connection_token + self._this_identifier
 
         # Verify the signature of the ephemeral public key.
-        if not QuantumSign.verify(
-                public_key=self._cached_public_keys[metadata.that_identifier],
-                message=request.kem_master_key,
-                signature=request.signature,
-                target_id=metadata.connection_token + self._this_identifier):
+        if not QuantumSign.verify(pkey=self._cached_public_keys[metadata.that_identifier], sig=request.signature, id_=session_id):
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
 

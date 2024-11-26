@@ -29,8 +29,6 @@ class LayerDProtocol(LayerNProtocol, Enum):
 
 @dataclass(kw_only=True)
 class CertificateRequest(RawRequest):
-    identifier: Bytes
-    public_key: Bytes
     certificate_signing_request: X509CertificateSigningRequest
 
 
@@ -64,6 +62,7 @@ class LayerD(LayerN):
 
     def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_identifier: Optional[Bytes] = None, this_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
         super().__init__(stack, None, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
+        self._stack._layerD = self
 
         self._this_identifier = this_identifier
         self._this_static_key_pair = this_static_key_pair
@@ -81,10 +80,8 @@ class LayerD(LayerN):
 
         # Create a temporary, unencrypted connection to the directory service.
         temp_connection = Connection(
-            that_address=d_address,
-            that_port=d_port,
-            that_identifier=d_identifier,
-            connection_token=secrets.token_bytes(CONNECTION_TOKEN_LENGTH))
+            that_address=d_address, that_port=d_port,
+            that_identifier=d_identifier, connection_token=secrets.token_bytes(CONNECTION_TOKEN_LENGTH))
 
         # Create an asymmetric key pair, and an identifier based on the public key.
         self._this_static_key_pair = QuantumSign.generate_key_pair()
@@ -100,35 +97,39 @@ class LayerD(LayerN):
 
         # Package the information into a request for the directory service.
         self._waiting_for_certificate = True
-        self._send(temp_connection, CertificateRequest(
-            identifier=self._this_identifier,
-            public_key=self._this_static_key_pair.public_key,
-            certificate_signing_request=this_certificate_signing_request))
+        self._send(temp_connection, CertificateRequest(certificate_signing_request=this_certificate_signing_request))
         self._logger.debug("Certificate Request Sent")
 
     def _handle_certificate_request(self, address: IPv6Address, port: Int, request: CertificateRequest) -> None:
+        # Extract metadata and information from the request.
         metadata = request.request_metadata
+        requester_identifier = request.certificate_signing_request.certificate_request_info.subject["common_name"]
+        requester_public_key = request.certificate_signing_request.certificate_request_info.subject_pk_info["public_key"]
+        requester_request_sig = request.certificate_signing_request.signature_value
 
-        # Extract metadata from the request and create a non-cached, 1-time connection.
+        # Create a non-cached, 1-time connection.
         temp_connection = Connection(
-            that_address=address,
-            that_port=port,
-            that_identifier=request.identifier,
-            connection_token=metadata.connection_token)
+            that_address=address, that_port=port,
+            that_identifier=requester_identifier, connection_token=metadata.connection_token)
 
         # Ensure the public key and identifier match.
-        if Hasher.hash(request.public_key, HashAlgorithm.SHA3_256) != request.identifier:
-            self._send(temp_connection, InvalidCertificateRequest(
-                identifier=request.identifier,
-                public_key=request.public_key))
+        if Hasher.hash(requester_public_key, HashAlgorithm.SHA3_256) != requester_identifier:
+            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_identifier, public_key=requester_public_key))
+            return
 
-        # Create the signed certificate, and send it back to the requester.
+        # Check their signature is valid.
+        if not QuantumSign.verify(pkey=requester_public_key, sig=requester_request_sig, id_=self._this_identifier):
+            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_identifier, public_key=requester_public_key))
+            return
+
+        # Accept the request by signing the certificate.
         certificate = X509.generate_certificate(
             client_signing_request=request.certificate_signing_request,
-            client_identifier=request.identifier,
+            client_identifier=requester_identifier,
             directory_service_secret_key=self._this_static_key_pair.secret_key,
             directory_service_identifier=self._this_identifier)
 
+        # Send the certificate back to the requester.
         self._send(temp_connection, CertificateResponse(certificate=certificate))
 
     def _handle_certificate_response(self, address: IPv6Address, port: Int, request: CertificateResponse) -> None:
@@ -137,25 +138,25 @@ class LayerD(LayerN):
 
         # Check the certificate was signed by the directory service.
         if not QuantumSign.verify(
-                public_key=self._this_static_key_pair.public_key,
-                message=pickle.dumps(certificate["tbs_certificate"]),
-                signature=certificate["signature_value"],
-                target_id=self._this_identifier):
+                pkey=self._this_static_key_pair.public_key,
+                sig=certificate.signature_value,
+                id_=self._this_identifier):
             self._logger.error("Invalid certificate signature.")
             return
 
         # Check the identifier on the certificate matches the expected one (anti-tamper).
-        if certificate["tbs_certificate"]["subject"]["common_name"] != self._this_identifier.hex():
+        if certificate.tbs_certificate.subject["common_name"] != self._this_identifier.hex():
             self._logger.error("Invalid certificate identifier.")
             return
 
         # Check the public key on the certificate matches the expected one (anti-tamper).
-        if certificate["tbs_certificate"]["subject_public_key_info"]["public_key"] != self._this_static_key_pair.public_key:
+        if certificate.tbs_certificate.subject_pk_info["public_key"] != self._this_static_key_pair.public_key:
             self._logger.error("Invalid certificate public key.")
             return
 
         # Mark the bootstrap sequence as complete.
         self._certificate = certificate
+        self._waiting_for_certificate = False
 
     def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.

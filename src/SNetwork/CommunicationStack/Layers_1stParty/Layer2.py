@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, RawRequest
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
-from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Json, Bytes, Dict, Optional, List, Str, Int
@@ -67,7 +67,7 @@ class ConnectionRouteJoinAcceptResponse(RawRequest):
     route_token: Bytes
     acceptor_identifier: Bytes
     kem_master_key: Bytes
-    signature: Bytes
+    signature: SignedMessagePair
 
 
 @dataclass(kw_only=True)
@@ -193,9 +193,9 @@ class Layer2(LayerN):
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.route_owner_ephemeral_public_key)
         signature = QuantumSign.sign(
-            secret_key=self._stack._layer4._this_static_secret_key,
-            message=self._stack._layer4._this_identifier + request.route_token + kem_wrapped_key.encapsulated,
-            target_id=connection.connection_token + connection.that_identifier)
+            skey=self._stack._layer4._this_static_secret_key,
+            msg=self._stack._layer4._this_identifier + request.route_token + kem_wrapped_key.encapsulated,
+            id_=connection.connection_token + connection.that_identifier)
         self._external_tunnel_keys[request.route_token] = kem_wrapped_key.decapsulated
 
         # Check if they are involved in maximum number of routes.
@@ -225,10 +225,9 @@ class Layer2(LayerN):
 
         # Verify the signature of the candidate node.
         if not QuantumSign.verify(
-                public_key=self._stack._layer4._cached_public_keys[request.acceptor_identifier],
-                message=self._route.candidate_node.that_identifier + request.route_token + request.kem_master_key,
-                signature=request.signature,
-                target_id=self._route.route_token + self._route.nodes[-1].that_identifier):
+                pkey=self._stack._layer4._cached_public_keys[request.acceptor_identifier],
+                sig=request.signature,
+                id_=self._route.route_token + self._route.nodes[-1].that_identifier):
             self._logger.error("Invalid signature from candidate node.")
             return
 
