@@ -1,7 +1,7 @@
 import json
 import subprocess
 import time
-from threading import Thread
+from threading import Thread, Lock
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -29,6 +29,7 @@ class LogMessageDisplay(QWidget):
 
     def add_new_log_message(self, message: str) -> None:
         label = QLabel(message)
+        label.setWordWrap(False)
         self.layout().addWidget(label)
 
 
@@ -37,12 +38,14 @@ class LogMessageScroller(QScrollArea):
     _log_message_display: LogMessageDisplay
     _log_message_recv = pyqtSignal(str)
     _program_thread: Thread
+    _io_lock: Lock
 
     def __init__(self, node_id: int, is_dir: bool, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._node_id = node_id
         self._is_dir = is_dir
         self._log_message_display = LogMessageDisplay()
+        self._io_lock = Lock()
 
         # Configure the scroll area.
         self.setWidgetResizable(True)
@@ -95,7 +98,8 @@ class LogMessageScroller(QScrollArea):
             line = pipe.readline().decode("utf-8").strip()
             if not line:
                 break
-            self._log_message_recv.emit(line)
+            with self._io_lock:
+                self._log_message_recv.emit(line)
 
 
 class TestGui(QWidget):

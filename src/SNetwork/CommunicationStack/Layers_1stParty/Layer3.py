@@ -7,7 +7,7 @@ from threading import Lock, Thread
 from typing import TYPE_CHECKING
 import math, operator, random, time
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, InsecureRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, RawRequest
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
@@ -52,46 +52,46 @@ class Layer3Protocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class PingRequest(InsecureRequest):
+class PingRequest(RawRequest):
     ping_timestamp: Float
 
 
 @dataclass(kw_only=True)
-class PongResponse(InsecureRequest):
+class PongResponse(RawRequest):
     ping_timestamp: Float
 
 
 @dataclass(kw_only=True)
-class PutResourceRequest(InsecureRequest):
+class PutResourceRequest(RawRequest):
     resource_key: Bytes
     resource_value: Bytes
 
 
 @dataclass(kw_only=True)
-class GetResourceRequest(InsecureRequest):
+class GetResourceRequest(RawRequest):
     resource_key: Bytes
 
 
 @dataclass(kw_only=True)
-class ReturnResourcePassResponse(InsecureRequest):
+class ReturnResourcePassResponse(RawRequest):
     resource_key: Bytes
     resource_value: Bytes
 
 
 @dataclass(kw_only=True)
-class ReturnResourceFailResponse(InsecureRequest):
+class ReturnResourceFailResponse(RawRequest):
     resource_key: Bytes
     closest_node_identifiers: List[Bytes]
     closest_node_addresses: List[Tuple[Str, Int]]
 
 
 @dataclass(kw_only=True)
-class FindNodeRequest(InsecureRequest):
+class FindNodeRequest(RawRequest):
     target_identifier: Bytes
 
 
 @dataclass(kw_only=True)
-class FindNodeResponse(InsecureRequest):
+class FindNodeResponse(RawRequest):
     target_identifier: Bytes
     closest_nodes_identifiers: List[Bytes]
     closest_nodes_addresses: List[Tuple[Str, Int]]
@@ -309,14 +309,16 @@ class Layer3(LayerN):
 
     def _handle_ping_request(self, request: PingRequest) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
 
         # Respond with a pong response, containing the request timestamp.
         self._send_secure(connection, PongResponse(ping_timestamp=request.ping_timestamp))
 
     def _handle_pong_response(self, address: IPv6Address, request: PongResponse) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
         timestamp = request.ping_timestamp
 
         # Remove the ping request from the ping queue.
@@ -335,7 +337,8 @@ class Layer3(LayerN):
 
     def _handle_get_resource_request(self, request: GetResourceRequest) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
         resource_key = request.resource_key
 
         # Check if this node is hosting the requested key.
@@ -359,7 +362,8 @@ class Layer3(LayerN):
 
     def _handle_return_resource_pass_response(self, request: ReturnResourcePassResponse) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
         resource_key = request.resource_key
 
         # Store the key and value in the DHT.
@@ -375,7 +379,8 @@ class Layer3(LayerN):
 
     def _handle_find_node_request(self, address: IPv6Address, request: FindNodeRequest) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
 
         # Get the k closest nodes to the target identifier.
         closest_nodes = self._closest_k_nodes_to(request.target_identifier)
@@ -390,7 +395,8 @@ class Layer3(LayerN):
 
     def _handle_find_node_response(self, address: IPv6Address, request: FindNodeResponse) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
         target_identifier = request.target_identifier
         node_lookup_request = self._node_lookup_requests[target_identifier]
 

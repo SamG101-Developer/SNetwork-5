@@ -7,8 +7,7 @@ from threading import Thread
 from typing import TYPE_CHECKING
 import secrets
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, AbstractRequest, Connection, \
-    ConnectionState, InsecureRequest, SecureRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, ConnectionState, RawRequest
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
@@ -16,6 +15,7 @@ from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
+from SNetwork.Utils.Json import SafeJson
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 
 if TYPE_CHECKING:
@@ -33,25 +33,25 @@ class Layer4Protocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class ConnectionRequest(InsecureRequest):
+class ConnectionRequest(RawRequest):
     certificate: Bytes
     ephemeral_public_key: Bytes
     signature: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionAccept(InsecureRequest):
+class ConnectionAccept(RawRequest):
     kem_master_key: Bytes
     signature: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionClose(InsecureRequest):
+class ConnectionClose(RawRequest):
     reason: Str
 
 
 @dataclass(kw_only=True)
-class ConnectionRotateKey(InsecureRequest):
+class ConnectionRotateKey(RawRequest):
     cur_key_hashed: Bytes
     new_key_wrapped: Bytes
     after: Int
@@ -113,6 +113,7 @@ class Layer4(LayerN):
         """
 
         # Generate a unique connection token for this connection.
+        # Todo: Make a combination of this and that identifier, hashed? provides a linkage then
         connection_token = secrets.token_bytes(32) + Timestamp.generate_time_stamp()
 
         # Generate an ephemeral public key pair for this connection exclusively + sign.
@@ -134,7 +135,7 @@ class Layer4(LayerN):
 
         # Create the JSON request to request a connection. Include the certificate and signed ephemeral public key.
         self._send(connection, ConnectionRequest(
-            certificate=self._this_certificate.der,
+            certificate=SafeJson.dumps(self._this_certificate),
             ephemeral_public_key=this_ephemeral_key_pair.public_key,
             signature=this_ephemeral_public_key_signed))
 
@@ -201,9 +202,10 @@ class Layer4(LayerN):
 
     def _handle_connection_request(self, address: IPv6Address, port: Int, request: ConnectionRequest) -> None:
         # Create the Connection object to track the conversation.
+        metadata = request.request_metadata
         connection = Connection(
-            that_address=address, that_port=port, that_identifier=request.that_identifier,
-            connection_token=request.connection_token, connection_state=ConnectionState.PendingConnection,
+            that_address=address, that_port=port, that_identifier=metadata.that_identifier,
+            connection_token=metadata.connection_token, connection_state=ConnectionState.PendingConnection,
             that_ephemeral_public_key=request.ephemeral_public_key)
         self._conversations[connection.connection_token] = connection
 
@@ -211,19 +213,19 @@ class Layer4(LayerN):
         if not request.certificate.verify_with(self._directory_service_public_key):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
-        that_static_public_key = X509Certificate.from_der(request.certificate).public_key
+        that_static_public_key = SafeJson.loads(request.certificate)["tbs_certificate"]["subject_public_key_info"]["public_key"]
 
         # Verify the signature of the ephemeral public key.
         verification = QuantumSign.verify(
             public_key=that_static_public_key, message=request.ephemeral_public_key, signature=request.signature,
-            target_id=request.connection_token + self._this_identifier)
+            target_id=metadata.connection_token + self._this_identifier)
         if not verification:
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
-        self._cached_public_keys[request.that_identifier] = that_static_public_key
+        self._cached_public_keys[metadata.that_identifier] = that_static_public_key
 
         # Validate the connection token's timestamp is within the tolerance.
-        if not Timestamp.check_time_stamp(request.connection_token[-8:]):
+        if not Timestamp.check_time_stamp(metadata.connection_token[-8:]):
             self._send(connection, ConnectionClose(reason="Invalid connection token timestamp."))
             return
 
@@ -246,14 +248,15 @@ class Layer4(LayerN):
 
     def _handle_connection_accept(self, request: ConnectionAccept) -> None:
         # Get the connection object for this request.
-        connection = self._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._conversations[metadata.connection_token]
 
         # Verify the signature of the ephemeral public key.
         if not QuantumSign.verify(
-                public_key=self._cached_public_keys[request.that_identifier],
+                public_key=self._cached_public_keys[metadata.that_identifier],
                 message=request.kem_master_key,
                 signature=request.signature,
-                target_id=request.connection_token + self._this_identifier):
+                target_id=metadata.connection_token + self._this_identifier):
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
 
@@ -270,15 +273,17 @@ class Layer4(LayerN):
 
     def _handle_connection_close(self, request: ConnectionClose) -> None:
         # Get the connection object for this request.
-        connection = self._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._conversations[metadata.connection_token]
 
         # Clean up the connection object and mark it as closed.
         connection.connection_state = ConnectionState.ConnectionClosed
-        del self._conversations[request.connection_token]
+        del self._conversations[metadata.connection_token]
 
     def _handle_rotate_key(self, request: ConnectionRotateKey) -> None:
         # Get the connection object for this request.
-        connection = self._conversations[request.connection_token]
+        metadata = request.request_metadata
+        connection = self._conversations[metadata.connection_token]
 
         # Check if the current key matches the hashed key.
         current_key = list(connection.e2e_primary_keys.values())[-1]

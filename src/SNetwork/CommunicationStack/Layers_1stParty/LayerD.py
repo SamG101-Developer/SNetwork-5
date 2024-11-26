@@ -7,7 +7,7 @@ from threading import Thread
 from typing import TYPE_CHECKING
 import secrets
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import Connection, LayerN, LayerNProtocol, InsecureRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import Connection, LayerN, LayerNProtocol, RawRequest
 from SNetwork.Config import CONNECTION_TOKEN_LENGTH
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
 from SNetwork.QuantumCrypto.Certificate import X509, X509Certificate, X509CertificateSigningRequest
@@ -29,19 +29,19 @@ class LayerDProtocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class CertificateRequest(InsecureRequest):
+class CertificateRequest(RawRequest):
     identifier: Bytes
     public_key: Bytes
     certificate: Bytes
 
 
 @dataclass(kw_only=True)
-class CertificateResponse(InsecureRequest):
+class CertificateResponse(RawRequest):
     certificate: Bytes
 
 
 @dataclass(kw_only=True)
-class InvalidCertificateRequest(InsecureRequest):
+class InvalidCertificateRequest(RawRequest):
     identifier: Bytes
     public_key: Bytes
 
@@ -108,13 +108,15 @@ class LayerD(LayerN):
         self._logger.debug("Certificate Request Sent")
 
     def _handle_certificate_request(self, address: IPv6Address, port: Int, request: CertificateRequest) -> None:
+        metadata = request.request_metadata
+
         # Extract metadata from the request and create a non-cached, 1-time connection.
         certificate_request = SafeJson.loads(request.certificate)
         temp_connection = Connection(
             that_address=address,
             that_port=port,
             that_identifier=request.identifier,
-            connection_token=request.connection_token)
+            connection_token=metadata.connection_token)
 
         # Ensure the public key and identifier match.
         if Hasher.hash(request.public_key, HashAlgorithm.SHA3_256) != request.identifier:

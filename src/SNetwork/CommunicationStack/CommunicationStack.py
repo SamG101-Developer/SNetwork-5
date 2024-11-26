@@ -7,6 +7,8 @@ from SNetwork.CommunicationStack.Layers_1stParty.Layer1 import Layer1
 from SNetwork.CommunicationStack.Layers_1stParty.Layer2 import Layer2
 from SNetwork.CommunicationStack.Layers_1stParty.Layer3 import Layer3
 from SNetwork.CommunicationStack.Layers_1stParty.Layer4 import Layer4
+from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import AbstractRequest
 from SNetwork.CommunicationStack.Layers_2ndParty.LayerHTTP.LayerHttp import LayerHTTP
 from SNetwork.Config import DEFAULT_IPV6
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
@@ -55,18 +57,18 @@ class CommunicationStack:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket_ln.recvfrom(4096)
-            request = SafeJson.loads(data)  # error handler -> json error back to sender
+            request = AbstractRequest.deserialize(data)  # error handler -> json error back to sender
             if not request: continue
 
             self._logger.debug(f"Received request from {address}.")
 
             # Handle secure requests
-            if request["secure"]:
-                token, encrypted_data = request["token"], request["data"]
+            if request.secure:
+                token, encrypted_data = request.token, request.data
 
                 # Ensure the token represents a connection that both exists, and is in the accepted state.
                 if token in self._layer4._conversations.keys() and self._layer4._conversations[token].is_accepted():
-                    e2e_key = self._layer4._conversations[token].e2e_primary_keys[int(request["message_number"]) // 100]
+                    e2e_key = self._layer4._conversations[token].e2e_primary_keys[int(request.request_metadata.message_number) // 100]
                     decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
                     decrypted_json = SafeJson.loads(decrypted_data)
                     request = decrypted_json
@@ -77,7 +79,7 @@ class CommunicationStack:
                     continue
 
             # Handle non-secure requests
-            Thread(target=globals()[f"Layer{request["layer"]}"]._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
+            Thread(target=globals()[f"Layer{request.request_metadata.stack_layer}"]._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
 
 
 __all__ = ["CommunicationStack"]

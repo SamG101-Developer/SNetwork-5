@@ -6,7 +6,7 @@ from socket import socket as Socket
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, InsecureRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, RawRequest
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
@@ -43,7 +43,7 @@ class Layer2Protocol(LayerNProtocol, Enum):
 
 
 @dataclass(kw_only=True)
-class ConnectionRouteExtendRequest(InsecureRequest):
+class ConnectionRouteExtendRequest(RawRequest):
     route_token: Bytes
     next_address: Str
     next_port: Int
@@ -52,18 +52,18 @@ class ConnectionRouteExtendRequest(InsecureRequest):
 
 
 @dataclass(kw_only=True)
-class ConnectionRouteJoinRequest(InsecureRequest):
+class ConnectionRouteJoinRequest(RawRequest):
     route_token: Bytes
     route_owner_ephemeral_public_key: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionRouteJoinRejectResponse(InsecureRequest):
+class ConnectionRouteJoinRejectResponse(RawRequest):
     route_token: Bytes
 
 
 @dataclass(kw_only=True)
-class ConnectionRouteJoinAcceptResponse(InsecureRequest):
+class ConnectionRouteJoinAcceptResponse(RawRequest):
     route_token: Bytes
     acceptor_identifier: Bytes
     kem_master_key: Bytes
@@ -71,7 +71,7 @@ class ConnectionRouteJoinAcceptResponse(InsecureRequest):
 
 
 @dataclass(kw_only=True)
-class TunnelDataRequest(InsecureRequest):
+class TunnelDataRequest(RawRequest):
     route_token: Bytes
     data: Bytes
 
@@ -163,7 +163,8 @@ class Layer2(LayerN):
     @strict_isolation
     def _handle_connection_route_extend_request(self, request: ConnectionRouteExtendRequest) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metdata = request.request_metadata
+        connection = self._stack._layer4._conversations[metdata.connection_token]
 
         # Create a connection to the new node as the route owner has requested.
         new_connection = self._stack._layer4.connect(
@@ -186,7 +187,8 @@ class Layer2(LayerN):
     @strict_isolation
     def _handle_connection_route_join_request(self, request: ConnectionRouteJoinRequest) -> None:
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        metdata = request.request_metadata
+        connection = self._stack._layer4._conversations[metdata.connection_token]
 
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.route_owner_ephemeral_public_key)
@@ -209,9 +211,11 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_connection_route_join_accept_response(self, request: ConnectionRouteJoinAcceptResponse) -> None:
+        metdata = request.request_metadata
+
         # If this node isn't the route owner, tunnel the message backwards.
         if not self._route or request.route_token != self._route.route_token:
-            connection = self._stack._layer4._conversations[self._route_reverse_token_map[request.connection_token]]
+            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.connection_token]]
             self._send_tunnel_backwards(connection, request)
 
         # Check the route token and candidate node are correct.
@@ -239,9 +243,11 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_connection_route_join_reject_response(self, request: ConnectionRouteJoinRejectResponse) -> None:
+        metdata = request.request_metadata
+
         # If this node isn't the route owner, tunnel the message backwards.
         if not self._route or request.route_token != self._route.route_token:
-            connection = self._stack._layer4._conversations[self._route_reverse_token_map[request.connection_token]]
+            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.connection_token]]
             self._send_tunnel_backwards(connection, request)
 
         # Mark the candidate node as rejected, and the route builder will handle the circuit reset.
@@ -249,21 +255,23 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_tunnel_data_request(self, request: TunnelDataRequest) -> None:
+        metdata = request.request_metadata
+
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[request.connection_token]
+        connection = self._stack._layer4._conversations[metdata.connection_token]
 
         # Client receive (remove all layers of encryption).
         if self._route and self._route.route_token == request.route_token:
             for route_node in self._route.nodes:
                 request.data = SymmetricEncryption.decrypt(data=request.data, key=route_node.e2e_primary_keys[0])
-            self._handle_command(connection.that_address, connection.that_port, InsecureRequest.deserialize_to_json(request.data))
+            self._handle_command(connection.that_address, connection.that_port, RawRequest.deserialize_to_json(request.data))
 
         # Tunnel a message backwards (add a layer of encryption).
         else:
             self._send_tunnel_backwards(connection, request)
 
     @strict_isolation
-    def _send_tunnel_forwards(self, connection: Connection, tunnel_request: InsecureRequest) -> None:
+    def _send_tunnel_forwards(self, connection: Connection, tunnel_request: RawRequest) -> None:
         # The client will tunnel the message forwards to a node in the route.
         tunnel_request = self._prep_data(connection, tunnel_request)
         for route_node in self._route.nodes:
@@ -275,7 +283,7 @@ class Layer2(LayerN):
         self._send_secure(entry_connection, tunnel_request)
 
     @strict_isolation
-    def _send_tunnel_backwards(self, connection: Connection, request: InsecureRequest, route_token: Bytes) -> None:
+    def _send_tunnel_backwards(self, connection: Connection, request: RawRequest, route_token: Bytes) -> None:
         # A route node wil tunnel the message backwards to the client.
         request_data = self._prep_data(connection, request).serialize()
         request_data = SymmetricEncryption.encrypt(data=request_data, key=self._external_tunnel_keys[route_token])

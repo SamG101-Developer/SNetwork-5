@@ -17,6 +17,13 @@ class X509CertificateSigningRequest(TypedDict):
     signature_algorithm: dict[str, str]
     signature_value: Bytes
 
+    def dumps(self) -> Bytes:
+        return SafeJson.dumps(self)
+
+    def loads(self, data: Bytes) -> X509CertificateSigningRequest:
+        setattr(self, **SafeJson.loads(data))
+        return self
+
 
 class X509TbsCertificate(TypedDict):
     version: str
@@ -32,6 +39,13 @@ class X509Certificate(TypedDict):
     tbs_certificate: X509TbsCertificate
     signature_algorithm: dict[str, str]
     signature_value: Bytes
+
+    def dumps(self) -> Bytes:
+        return SafeJson.dumps(self)
+
+    def loads(self, data: Bytes) -> X509Certificate:
+        setattr(self, **SafeJson.loads(data))
+        return self
 
 
 class X509:

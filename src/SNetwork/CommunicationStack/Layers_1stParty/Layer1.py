@@ -4,7 +4,7 @@ from ipaddress import IPv6Address
 from socket import socket as Socket
 from typing import TYPE_CHECKING
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, LayerNProtocol, InsecureRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, LayerNProtocol, RawRequest
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Json, Int
 
@@ -28,5 +28,5 @@ class Layer1(LayerN):
     def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
         ...
 
-    def _send(self, connection: Connection, request: InsecureRequest) -> None:
+    def _send(self, connection: Connection, request: RawRequest) -> None:
         ...
