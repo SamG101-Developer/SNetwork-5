@@ -1,7 +1,8 @@
 import logging, json
 
-from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE
+from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
+from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Types import Str, List
 from SNetwork.Utils.Types import Bytes, Int, Optional, Tuple
@@ -55,7 +56,7 @@ class ProfileManager:
         return hashed_username, hashed_password, current_profiles[username]["port"]
 
     @staticmethod
-    def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int]]:
+    def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int, Bytes, AsymmetricKeyPair]]:
         # Hash the username and password.
         hashed_username = Hasher.hash(username.encode(), HashAlgorithm.SHA3_256)
         hashed_password = Hasher.hash(b"", HashAlgorithm.SHA3_256)
@@ -64,8 +65,16 @@ class ProfileManager:
         with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
             current_profiles = json.load(file)
 
+        # Load the keys
+        with SafeFileOpen(DIRECTORY_SERVICE_PRIVATE_FILE % username, "rb") as file:
+            private_information = json.load(file)
+            identifier = bytes.fromhex(private_information["identifier"])
+            static_key_pair = AsymmetricKeyPair(
+                public_key=bytes.fromhex(private_information["public_key"]),
+                secret_key=bytes.fromhex(private_information["secret_key"]))
+
         # Return the hashed username and port.
-        return hashed_username, hashed_password, current_profiles[username]["port"]
+        return hashed_username, hashed_password, current_profiles[username]["port"], identifier, static_key_pair
 
     @staticmethod
     def list_profiles() -> List[Str]:
