@@ -27,8 +27,8 @@ class CommandManager:
     @staticmethod
     @no_return_interruptable
     def _handle_directory(arguments: Namespace) -> NoReturn:
-        hashed_username, hashed_password, port = ProfileManager.validate_directory_profile(arguments.username)
-        directory_node = DirectoryNode(arguments.username, hashed_username, hashed_password, port)
+        hashed_username, hashed_password, port, identifier, static_key_pair = ProfileManager.validate_directory_profile(arguments.username)
+        directory_node = DirectoryNode(arguments.username, hashed_username, hashed_password, port, identifier, static_key_pair)
         while True: continue
 
     @staticmethod
