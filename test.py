@@ -4,8 +4,8 @@ import time
 from threading import Thread, Lock
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QApplication
+from PyQt6.QtGui import QFont, QMouseEvent, QIcon
+from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QApplication, QDialog
 
 from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
@@ -21,16 +21,24 @@ assert W * H == NODE_COUNT + DIR_NODE_COUNT
 
 
 class LogMessageDisplay(QWidget):
+    _messages: list[str]
+
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        self._messages = []
+
         self.setLayout(QVBoxLayout())
         self.setFont(QFont("JetBrains Mono", 5))
         self.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def add_new_log_message(self, message: str) -> None:
+        self._messages.append(message)
         label = QLabel(message)
         label.setWordWrap(False)
         self.layout().addWidget(label)
+
+    def nth_message(self, n: int) -> str:
+        return self._messages[n]
 
 
 class LogMessageScroller(QScrollArea):
@@ -50,7 +58,6 @@ class LogMessageScroller(QScrollArea):
         # Configure the scroll area.
         self.setWidgetResizable(True)
         self.setWidget(self._log_message_display)
-        self.widget().setLayout(QGridLayout())
 
         # Connect the signal to the display.
         self._log_message_recv.connect(self._log_message_display.add_new_log_message)
@@ -61,6 +68,28 @@ class LogMessageScroller(QScrollArea):
         else:
             self._program_thread = Thread(target=self.run_dir_process)
             self._program_thread.start()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        # Bring text up in an expanded dialog (bigger font, more readable)
+
+        dialog = QDialog(self)
+        dialog.setLayout(QVBoxLayout())
+        dialog.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+        dialog.setWindowTitle(f"Node {self._node_id} Log Messages")
+        dialog.setFixedSize(800, 600)
+        dialog.setWindowOpacity(0.9)
+
+        scroller = QScrollArea(dialog)
+        scroller.setWidgetResizable(True)
+        scroller.setWidget(LogMessageDisplay())
+        scroller.widget().setFont(QFont("JetBrains Mono", 10))
+
+        for i in range(self._log_message_display.layout().count()):
+            log_message = self._log_message_display.nth_message(i)
+            scroller.widget().add_new_log_message(log_message)
+
+        dialog.layout().addWidget(scroller)
+        dialog.show()
 
     def run_node_process(self) -> None:
         username, password = (f"username_{self._node_id}", "pass")
@@ -128,11 +157,20 @@ def create_directory_services() -> None:
         DirectoryServiceManager.new_directory_service(f"snetwork.directory-service.{i}")
 
 
+def create_nodes(n) -> None:
+    for i in range(n):
+        username, password = (f"username_{i}", "pass")
+        ProfileManager.create_profile(username, password)
+        command = f".venv/Scripts/python main.py profile create --name {username} --pass {password}"
+        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
 if __name__ == "__main__":
     import sys
 
     sys.excepthook = lambda e, v, t: sys.__excepthook__(e, v, t)
     # create_directory_services()
+    create_nodes(NODE_COUNT)
     app = QApplication(sys.argv)
     window = TestGui()
     sys.exit(app.exec())
