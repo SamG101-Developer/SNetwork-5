@@ -27,7 +27,7 @@ class DirectoryNode(Node):
 
         # Save the information of the node and start the communication stack.
         self._info = KeyManager.get_info(hashed_username)
-        self._communication_stack.start(self._info, self._bootstrapper)
+        self._communication_stack.start(self._info)
 
     def _boot_sequence(self, hashed_username: Bytes, hashed_password: Bytes) -> None:
         # Set the keys.

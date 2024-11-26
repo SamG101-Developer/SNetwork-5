@@ -1,8 +1,10 @@
 import logging
 import pickle
+import time
 from ipaddress import IPv6Address
 from socket import socket as Socket, SOCK_DGRAM, AF_INET6
 from threading import Thread
+from typing import Optional
 
 from SNetwork.CommunicationStack.Layers_1stParty.Layer1 import Layer1
 from SNetwork.CommunicationStack.Layers_1stParty.Layer2 import Layer2
@@ -24,16 +26,23 @@ class CommunicationStack:
     each layer of the stack, as some-cross layer communication is required.
     """
 
-    _layer1: Layer1
-    _layer2: Layer2
-    _layer3: Layer3
-    _layer4: Layer4
-    _layerD: LayerD
+    _layer1: Optional[Layer1]
+    _layer2: Optional[Layer2]
+    _layer3: Optional[Layer3]
+    _layer4: Optional[Layer4]
+    _layerD: Optional[LayerD]
 
     _port: Int
     _socket_ln: Socket
 
     def __init__(self, hashed_username: Bytes, port: Int):
+        # Set the layers to None, as they are created in the start method.
+        self._layer1 = None
+        self._layer2 = None
+        self._layer3 = None
+        self._layer4 = None
+        self._layerD = None
+
         # Create the sockets for the stack.
         self._port = port
         self._socket_ln = Socket(family=AF_INET6, type=SOCK_DGRAM)
@@ -42,27 +51,26 @@ class CommunicationStack:
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))
         self._logger.debug(f"Bound to port {self._port}.")
+        Thread(target=self._listen).start()
 
     def __del__(self) -> None:
         self._socket_ln and self._socket_ln.close()
 
-    def start(self, info: KeyStoreData, layerD: LayerD) -> None:
+    def start(self, info: KeyStoreData) -> None:
         # Create the layers of the stack.
         self._layer4 = Layer4(self, info, self._socket_ln)
         self._layer3 = Layer3(self, info, self._socket_ln)
         self._layer2 = Layer2(self, info, self._socket_ln)
         self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self))
-        self._layerD = layerD
-        self._listen()
 
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
-            data, address = self._socket_ln.recvfrom(8192)
-            request = AbstractRequest.deserialize(data)  # error handler -> json error back to sender
+            data, address = self._socket_ln.recvfrom(10_000)
+            request = AbstractRequest.deserialize(data)
             if not request: continue
 
-            self._logger.debug(f"Received request from {address}.")
+            self._logger.debug(f"<- Received request from {address}.")
 
             # Handle secure requests
             if request.secure:
@@ -81,7 +89,12 @@ class CommunicationStack:
                     continue
 
             # Handle non-secure requests
-            Thread(target=getattr(self, f"_layer{request.request_metadata.stack_layer}")._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
+            layer = getattr(self, f"_layer{request.request_metadata.stack_layer}")
+            while not layer:
+                self._logger.debug(f"Waiting for layer {request.request_metadata.stack_layer}...")
+                time.sleep(1)
+                continue
+            Thread(target=layer._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
 
 
 __all__ = ["CommunicationStack"]
