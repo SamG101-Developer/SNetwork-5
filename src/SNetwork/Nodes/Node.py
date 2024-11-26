@@ -10,9 +10,8 @@ class Node:
     _info: KeyStoreData
 
     def __init__(self, hashed_username: Bytes, hashed_password: Bytes, port: Int) -> None:
+        # Create the communication stack, and the bootstrapper layer.
         self._communication_stack = CommunicationStack(hashed_username, port)
-
-        # Create the bootstrapper layer.
         self._bootstrapper = LayerD(self._communication_stack, self._communication_stack._socket_ln, False)
 
         # Check if the node has been registered before.
@@ -22,7 +21,7 @@ class Node:
 
         # Save the information of the node and start the communication stack.
         self._info = KeyManager.get_info(hashed_username)
-        self._communication_stack.start(self._info)
+        self._communication_stack.start(self._info, self._bootstrapper)
 
     def _boot_sequence(self, hashed_username: Bytes, hashed_password: Bytes) -> None:
         # Register the node against the network.
