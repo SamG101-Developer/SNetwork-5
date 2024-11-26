@@ -1,36 +1,40 @@
 from __future__ import annotations
-from typing import TypedDict
+from dataclasses import dataclass
 import datetime as dt, pickle, secrets
 
-from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
-from SNetwork.Utils.Types import Bytes, Dict, Json, Str
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
+from SNetwork.Utils.Types import Bytes, Dict, Str
 
 
-class X509CertificateSigningRequestInfo(TypedDict):
+@dataclass(kw_only=True)
+class X509CertificateSigningRequestInfo:
     subject: Dict[Str, Bytes]
     subject_pk_info: Dict[Str, Bytes]
 
 
-class X509CertificateSigningRequest(TypedDict):
+@dataclass(kw_only=True)
+class X509CertificateSigningRequest:
     certificate_request_info: X509CertificateSigningRequestInfo
     signature_algorithm: Dict[Str, Str]
-    signature_value: Bytes
+    signature_value: SignedMessagePair
 
 
-class X509TbsCertificate(TypedDict):
+@dataclass(kw_only=True)
+class X509TbsCertificate:
     version: str
     serial_number: int
     signature: Dict[Str, Str]
     issuer: Dict[Str, Bytes]
     validity: Dict[Str, Str]
     subject: Dict[Str, Bytes]
-    subject_public_key_info: Dict[Str, Bytes]
+    subject_pk_info: Dict[Str, Bytes]
 
 
-class X509Certificate(TypedDict):
+@dataclass(kw_only=True)
+class X509Certificate:
     tbs_certificate: X509TbsCertificate
     signature_algorithm: Dict[Str, Str]
-    signature_value: Bytes
+    signature_value: SignedMessagePair
 
 
 class X509:
@@ -48,13 +52,13 @@ class X509:
         request = X509CertificateSigningRequest(
             certificate_request_info=request_info,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(secret_key=client_secret_key, message=pickle.dumps(request_info), target_id=directory_service_identifier))
+            signature_value=QuantumSign.sign(skey=client_secret_key, msg=pickle.dumps(request_info), id_=directory_service_identifier))
 
         return request
 
     @staticmethod
     def generate_certificate(
-            client_signing_request: Json,
+            client_signing_request: X509CertificateSigningRequest,
             client_identifier: Bytes,
             directory_service_secret_key: Bytes,
             directory_service_identifier: Bytes) -> X509Certificate:
@@ -67,16 +71,13 @@ class X509:
             validity={
                 "not_before": dt.datetime.now(dt.UTC).isoformat(),
                 "not_after": (dt.datetime.now(dt.UTC) + dt.timedelta(days=365)).isoformat()},
-            subject=client_signing_request["certificate_request_info"]["subject"],
-            subject_public_key_info={"public_key": client_signing_request["certificate_request_info"]["subject_pk_info"]["public_key"]})
+            subject=client_signing_request.certificate_request_info.subject,
+            subject_pk_info={"public_key": client_signing_request.certificate_request_info.subject_pk_info["public_key"]})
 
         certificate = X509Certificate(
             tbs_certificate=tbs_certificate,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(
-                secret_key=directory_service_secret_key,
-                message=pickle.dumps(tbs_certificate),
-                target_id=directory_service_identifier))
+            signature_value=QuantumSign.sign(skey=directory_service_secret_key, msg=pickle.dumps(tbs_certificate), id_=directory_service_identifier))
 
         return certificate
 
