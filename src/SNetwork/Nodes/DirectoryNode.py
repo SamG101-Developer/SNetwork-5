@@ -3,7 +3,7 @@ import json
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
 from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE
-from SNetwork.Managers.KeyManager import KeyManager
+from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
 from SNetwork.Nodes.Node import Node
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
@@ -36,10 +36,10 @@ class DirectoryNode(Node):
             logger = isolated_logger(LoggerHandlers.SYSTEM)
 
         # Store the certificate and other information in the key store.
-        KeyManager.set_info(
+        KeyManager.set_info(KeyStoreData(
             identifier=bytes.fromhex(private_directory_service_entry["identifier"]),
             secret_key=bytes.fromhex(private_directory_service_entry["secret_key"]),
             public_key=bytes.fromhex(private_directory_service_entry["public_key"]),
             certificate=None,
-            hashed_profile_username=hashed_username,
-            hashed_profile_password=hashed_password)
+            hashed_username=hashed_username,
+            hashed_password=hashed_password))

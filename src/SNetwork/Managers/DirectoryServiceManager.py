@@ -50,7 +50,7 @@ class DirectoryServiceManager:
         return True
 
     @staticmethod
-    def get_random_directory_service() -> tuple[IPv6Address, Int, Bytes]:
+    def get_random_directory_service() -> tuple[IPv6Address, Int, Bytes, Bytes]:
         # Load the current directory services.
         with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
             directory_services = json.load(file)
@@ -58,4 +58,4 @@ class DirectoryServiceManager:
         # Choose a random directory service to connect to.
         name = random.choice(list(directory_services.keys()))
         entry = directory_services[name]
-        return IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"])
+        return IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"]), bytes.fromhex(entry["public_key"])

@@ -28,7 +28,7 @@ class ProfileManager:
         else:
             ports = [int(current_profile["port"]) for current_profile in current_profiles.values()] or [40000]
             port = min(set(range(min(ports), max(ports) + 2)) - set(ports))
-            current_profiles[username] = {"username": username, "password": hashed_password.hex(), "port": port}
+            current_profiles[username] = {"username": username, "hashed_username": hashed_username.hex(), "hashed_password": hashed_password.hex(), "port": port}
             with SafeFileOpen(PROFILE_FILE, "w") as file:
                 json.dump(current_profiles, file)
 
@@ -48,7 +48,7 @@ class ProfileManager:
             return None
 
         # Check if the password is correct. Todo: bytes_eq
-        if hashed_password.hex() != current_profiles[username]["password"]:
+        if hashed_password.hex() != current_profiles[username]["hashed_password"]:
             logging.error("Incorrect password")
             return None
 

@@ -15,8 +15,7 @@ class Node:
         self._bootstrapper = LayerD(self._communication_stack, self._communication_stack._socket_ln, False)
 
         # Check if the node has been registered before.
-        has_info = KeyManager.has_info(hashed_username)
-        if not has_info:
+        if not KeyManager.has_info(hashed_username):
             self._boot_sequence(hashed_username, hashed_password)
 
         # Save the information of the node and start the communication stack.
@@ -29,10 +28,10 @@ class Node:
         while not self._bootstrapper._certificate: continue
 
         # Store the certificate and other information in the key store.
-        KeyManager.set_info(
+        KeyManager.set_info(KeyStoreData(
             identifier=self._bootstrapper._this_identifier,
             secret_key=self._bootstrapper._this_static_key_pair.secret_key,
             public_key=self._bootstrapper._this_static_key_pair.public_key,
             certificate=self._bootstrapper._certificate,
-            hashed_profile_username=hashed_username,
-            hashed_profile_password=hashed_password)
+            hashed_username=hashed_username,
+            hashed_password=hashed_password))
