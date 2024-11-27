@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import random
 from dataclasses import dataclass
 from enum import Enum
 from ipaddress import IPv6Address
@@ -8,14 +10,15 @@ from typing import TYPE_CHECKING
 import pickle, secrets
 
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import Connection, LayerN, LayerNProtocol, RawRequest
-from SNetwork.Config import CONNECTION_TOKEN_LENGTH
+from SNetwork.Config import CONNECTION_TOKEN_LENGTH, PROFILE_CACHE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
 from SNetwork.QuantumCrypto.Certificate import X509, X509Certificate, X509CertificateSigningRequest
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
-from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
+from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
+from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
-from SNetwork.Utils.Types import Bool, Optional, Bytes, Int
+from SNetwork.Utils.Types import Bool, Optional, Bytes, Int, Tuple, List, Dict
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -25,6 +28,9 @@ class LayerDProtocol(LayerNProtocol, Enum):
     CertificateRequest = 0x01
     CertificateResponse = 0x02
     InvalidCertificateRequest = 0x03
+    OkCertificateRequest = 0x04
+    BootstrapRequest = 0x05
+    BootstrapResponse = 0x06
 
 
 @dataclass(kw_only=True)
@@ -43,6 +49,23 @@ class InvalidCertificateRequest(RawRequest):
     public_key: Bytes
 
 
+@dataclass(kw_only=True)
+class OkCertificateRequest(RawRequest):
+    identifier: Bytes
+    certificate: X509Certificate
+    signature: SignedMessagePair
+
+
+@dataclass(kw_only=True)
+class BootstrapRequest(RawRequest):
+    pass
+
+
+@dataclass(kw_only=True)
+class BootstrapResponse(RawRequest):
+    node_info: List[Tuple[IPv6Address, Int, Bytes, Bytes]]
+
+
 class LayerD(LayerN):
     """
     Layer D isn't part of the connection stack, but is used for communicating to the directory service. This is used for
@@ -57,9 +80,13 @@ class LayerD(LayerN):
     _this_identifier: Optional[Bytes]
     _this_static_key_pair: Optional[AsymmetricKeyPair]
     _is_directory_service: Bool
-    _waiting_for_certificate: Bool
     _directory_service_static_public_key: Optional[Bytes]
     _certificate: Optional[X509Certificate]
+    _node_cache: List[Tuple[IPv6Address, Int, Bytes, Bytes]]
+    _certificate_cache: Dict[Bytes, X509Certificate]
+
+    _waiting_for_bootstrap: Bool
+    _waiting_for_certificate: Bool
 
     def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_identifier: Optional[Bytes] = None, this_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
         super().__init__(stack, None, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
@@ -68,18 +95,22 @@ class LayerD(LayerN):
         self._this_identifier = this_identifier
         self._this_static_key_pair = this_static_key_pair
         self._is_directory_service = is_directory_service
-        self._waiting_for_certificate = False
         self._directory_service_static_public_key = None
         self._certificate = None
 
+        self._node_cache = []
+        self._certificate_cache = {}
+
+        self._waiting_for_bootstrap = False
+        self._waiting_for_certificate = False
+
         # Start listening on the socket for this layer.
-        self._logger.debug("Layer D Ready")
+        self._logger.info("Layer D Ready")
 
     def join_network(self) -> None:
         # Choose a random directory service to connect to.
         d_address, d_port, d_identifier, d_pkey = DirectoryServiceManager.get_random_directory_service()
         self._directory_service_static_public_key = d_pkey
-        self._logger.debug(f"Contacting DS at {d_address}:{d_port}.")
 
         # Create a temporary, unencrypted connection to the directory service.
         temp_connection = Connection(
@@ -96,12 +127,26 @@ class LayerD(LayerN):
             client_secret_key=self._this_static_key_pair.secret_key,
             client_public_key=self._this_static_key_pair.public_key,
             directory_service_identifier=d_identifier)
-        self._logger.debug("Certificate Request Created")
 
         # Package the information into a request for the directory service.
         self._waiting_for_certificate = True
         self._send(temp_connection, CertificateRequest(certificate_signing_request=this_certificate_signing_request))
-        self._logger.debug("Certificate Request Sent")
+
+    def request_bootstrap(self) -> None:
+        # Choose a random directory service to connect to.
+        d_address, d_port, d_identifier, d_pkey = DirectoryServiceManager.get_random_directory_service()
+        self._directory_service_static_public_key = d_pkey
+        self._logger.info(f"Contacting DS at {d_address}:{d_port}.")
+
+        # Create an encrypted connection to the directory service.
+        connection = self._stack._layer4.connect(d_address, d_port, d_identifier)
+        if not connection:
+            self._logger.error("Failed to connect to the directory service.")
+            return
+
+        # Send the bootstrap request to the directory service.
+        self._waiting_for_bootstrap = True
+        self._send_secure(connection, BootstrapRequest())
 
     def _handle_certificate_request(self, address: IPv6Address, port: Int, request: CertificateRequest) -> None:
         # Extract metadata and information from the request.
@@ -129,8 +174,9 @@ class LayerD(LayerN):
         certificate = X509.generate_certificate(
             client_signing_request=request.certificate_signing_request,
             client_identifier=requester_id,
-            directory_service_secret_key=self._this_static_key_pair.secret_key,
+            directory_service_key_pair=self._this_static_key_pair,
             directory_service_identifier=self._this_identifier)
+        self._certificate_cache[requester_id] = certificate
 
         # Send the certificate back to the requester.
         self._send(temp_connection, CertificateResponse(certificate=certificate))
@@ -138,6 +184,7 @@ class LayerD(LayerN):
     def _handle_certificate_response(self, address: IPv6Address, port: Int, request: CertificateResponse) -> None:
         # Extract the certificate from the request.
         certificate: X509Certificate = request.certificate
+        d_identifier = certificate.tbs_certificate.issuer["common_name"]
         directory_service_pkey = self._directory_service_static_public_key
         directory_service_cert_sig = certificate.signature_value
 
@@ -159,7 +206,75 @@ class LayerD(LayerN):
         # Mark the bootstrap sequence as complete.
         self._certificate = certificate
         self._waiting_for_certificate = False
-        self._logger.debug("Certificate Received")
+        self._logger.info("Certificate received.")
+
+        # Wait for the node to initialize the other layers.
+        while not self._stack._layer4: continue
+
+        # Send an OK response to the directory service.
+        connection = self._stack._layer4.connect(address, port, d_identifier)
+        if not connection:
+            self._logger.error("Failed to connect to the directory service.")
+            return
+
+        self._send_secure(connection, OkCertificateRequest(
+            identifier=self._this_identifier,
+            certificate=certificate,
+            signature=QuantumSign.sign(skey=self._this_static_key_pair.secret_key, msg=pickle.dumps(certificate), id_=self._this_identifier)))
+        self._logger.info("Sent OK certificate.")
+
+    def _handle_invalid_certificate_request(self, address: IPv6Address, port: Int, request: InvalidCertificateRequest) -> None:
+        self._logger.error(f"Certificate request was invalid.")
+        self._waiting_for_certificate = False
+
+    def _handle_ok_certificate_request(self, address: IPv6Address, port: Int, request: OkCertificateRequest) -> None:
+        # Extract the metadata from the request.
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
+
+        # Check the signature is valid.
+        if not QuantumSign.verify(pkey=request.certificate.tbs_certificate.subject_pk_info["public_key"], sig=request.signature, id_=request.identifier):
+            self._logger.error("Invalid signature.")
+            return
+
+        # Check the certificate has been cached as pending.
+        if request.identifier not in self._certificate_cache.keys():
+            self._logger.error("Certificate was not cached.")
+            return
+
+        # Check the certificate is valid.
+        if request.certificate != self._certificate_cache[request.identifier]:
+            self._logger.error("Certificate was invalid.")
+            return
+
+        # Add the certificate to the cache.
+        self._node_cache.append((address, port, request.identifier, request.certificate.tbs_certificate.subject_pk_info["public_key"]))
+        del self._certificate_cache[request.identifier]
+
+        # Log the certificate.
+        self._logger.info(f"Certificate for {request.identifier.hex()} okayed.")
+
+    def _handle_bootstrap_request(self, address: IPv6Address, port: Int, request: BootstrapRequest) -> None:
+        # Extract the metadata from the request.
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
+
+        # Choose some random nodes to send back.
+        node_cache = random.sample(self._node_cache, 5)
+        self._send_secure(connection, BootstrapResponse(node_info=node_cache))
+
+    def _handle_bootstrap_response(self, address: IPv6Address, port: Int, request: BootstrapResponse) -> None:
+        # Extract the metadata from the request.
+        metadata = request.request_metadata
+        connection = self._stack._layer4._conversations[metadata.connection_token]
+
+        # Add the nodes to the cache.
+        self._node_cache.extend(request.node_info)
+        self._waiting_for_bootstrap = False
+
+        # Write the nodes to the cache.
+        with SafeFileOpen(PROFILE_CACHE % self._this_identifier.hex(), "wb") as file:
+            pickle.dump(self._node_cache, file)
 
     def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
@@ -172,13 +287,28 @@ class LayerD(LayerN):
                 thread.start()
 
             # Nodes will handle a certificate response.
-            case LayerDProtocol.CertificateResponse if self._waiting_for_certificate:
+            case LayerDProtocol.CertificateResponse if not self._is_directory_service and self._waiting_for_certificate:
                 thread = Thread(target=self._handle_certificate_response, args=(address, port, request))
                 thread.start()
 
             # Nodes will hande an invalid certificate request error.
-            case LayerDProtocol.InvalidCertificateRequest if self._waiting_for_certificate:
+            case LayerDProtocol.InvalidCertificateRequest if not self._is_directory_service and self._waiting_for_certificate:
                 thread = Thread(target=self._handle_invalid_certificate_request, args=(address, port, request))
+                thread.start()
+
+            # Directory service will handle an OK certificate request.
+            case LayerDProtocol.OkCertificateRequest if self._is_directory_service:
+                thread = Thread(target=self._handle_ok_certificate_request, args=(address, port, request))
+                thread.start()
+
+            # Directory service will handle a bootstrap request.
+            case LayerDProtocol.BootstrapRequest if self._is_directory_service:
+                thread = Thread(target=self._handle_bootstrap_request, args=(address, port, request))
+                thread.start()
+
+            # Nodes will handle a bootstrap response.
+            case LayerDProtocol.BootstrapResponse if not self._is_directory_service and self._waiting_for_bootstrap:
+                thread = Thread(target=self._handle_bootstrap_response, args=(address, port, request))
                 thread.start()
 
             # Default case

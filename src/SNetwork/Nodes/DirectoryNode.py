@@ -7,18 +7,21 @@ from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
 from SNetwork.Nodes.Node import Node
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
-from SNetwork.Utils.Types import Bytes, Int
+from SNetwork.Utils.Types import Bytes, Int, Str
 
 
 class DirectoryNode(Node):
-    _name: str
+    _stack: CommunicationStack
+    _boot: LayerD
+    _info: KeyStoreData
+    _name: Str
 
     def __init__(self, name, hashed_username: Bytes, hashed_password: Bytes, port: Int, identifier: Bytes, static_key_pair: AsymmetricKeyPair) -> None:
         self._name = name
 
         # Create the communication stack, and the bootstrapper layer.
-        self._communication_stack = CommunicationStack(hashed_username, port)
-        self._bootstrapper = LayerD(self._communication_stack, self._communication_stack._socket_ln, True, identifier, static_key_pair)
+        self._stack = CommunicationStack(hashed_username, port)
+        self._boot = LayerD(self._stack, self._stack._socket_ln, True, identifier, static_key_pair)
 
         # Check if the node has been registered before.
         has_info = KeyManager.has_info(hashed_username)
@@ -27,7 +30,7 @@ class DirectoryNode(Node):
 
         # Save the information of the node and start the communication stack.
         self._info = KeyManager.get_info(hashed_username)
-        self._communication_stack.start(self._info)
+        self._stack.start(self._info)
 
     def _boot_sequence(self, hashed_username: Bytes, hashed_password: Bytes) -> None:
         # Set the keys.
