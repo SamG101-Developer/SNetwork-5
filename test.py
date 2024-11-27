@@ -91,7 +91,6 @@ class LogMessageScroller(QScrollArea):
 
     def run_node_process(self) -> None:
         username, password = (f"username_{self._node_id}", "pass")
-        ProfileManager.create_profile(username, password)
         command = f".venv/Scripts/python main.py join --name {username} --pass {password}"
 
         # Create the process and link the logging to pipes.
