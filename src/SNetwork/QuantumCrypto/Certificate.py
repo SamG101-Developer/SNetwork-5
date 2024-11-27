@@ -77,7 +77,7 @@ class X509:
         certificate = X509Certificate(
             tbs_certificate=tbs_certificate,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(skey=directory_service_secret_key, msg=pickle.dumps(tbs_certificate), id_=directory_service_identifier))
+            signature_value=QuantumSign.sign(skey=directory_service_secret_key, msg=pickle.dumps(tbs_certificate), id_=client_identifier))
 
         return certificate
 

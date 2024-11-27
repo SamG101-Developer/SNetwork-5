@@ -58,6 +58,7 @@ class LayerD(LayerN):
     _this_static_key_pair: Optional[AsymmetricKeyPair]
     _is_directory_service: Bool
     _waiting_for_certificate: Bool
+    _directory_service_static_public_key: Optional[Bytes]
     _certificate: Optional[X509Certificate]
 
     def __init__(self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, this_identifier: Optional[Bytes] = None, this_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
@@ -68,6 +69,7 @@ class LayerD(LayerN):
         self._this_static_key_pair = this_static_key_pair
         self._is_directory_service = is_directory_service
         self._waiting_for_certificate = False
+        self._directory_service_static_public_key = None
         self._certificate = None
 
         # Start listening on the socket for this layer.
@@ -75,7 +77,8 @@ class LayerD(LayerN):
 
     def join_network(self) -> None:
         # Choose a random directory service to connect to.
-        d_address, d_port, d_identifier = DirectoryServiceManager.get_random_directory_service()
+        d_address, d_port, d_identifier, d_pkey = DirectoryServiceManager.get_random_directory_service()
+        self._directory_service_static_public_key = d_pkey
         self._logger.debug(f"Contacting DS at {d_address}:{d_port}.")
 
         # Create a temporary, unencrypted connection to the directory service.
@@ -103,29 +106,29 @@ class LayerD(LayerN):
     def _handle_certificate_request(self, address: IPv6Address, port: Int, request: CertificateRequest) -> None:
         # Extract metadata and information from the request.
         metadata = request.request_metadata
-        requester_identifier = request.certificate_signing_request.certificate_request_info.subject["common_name"]
-        requester_public_key = request.certificate_signing_request.certificate_request_info.subject_pk_info["public_key"]
+        requester_id = request.certificate_signing_request.certificate_request_info.subject["common_name"]
+        requester_pkey = request.certificate_signing_request.certificate_request_info.subject_pk_info["public_key"]
         requester_request_sig = request.certificate_signing_request.signature_value
 
         # Create a non-cached, 1-time connection.
         temp_connection = Connection(
             that_address=address, that_port=port,
-            that_identifier=requester_identifier, connection_token=metadata.connection_token)
+            that_identifier=requester_id, connection_token=metadata.connection_token)
 
         # Ensure the public key and identifier match.
-        if Hasher.hash(requester_public_key, HashAlgorithm.SHA3_256) != requester_identifier:
-            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_identifier, public_key=requester_public_key))
+        if Hasher.hash(requester_pkey, HashAlgorithm.SHA3_256) != requester_id:
+            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_id, public_key=requester_pkey))
             return
 
         # Check their signature is valid.
-        if not QuantumSign.verify(pkey=requester_public_key, sig=requester_request_sig, id_=self._this_identifier):
-            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_identifier, public_key=requester_public_key))
+        if not QuantumSign.verify(pkey=requester_pkey, sig=requester_request_sig, id_=self._this_identifier):
+            self._send(temp_connection, InvalidCertificateRequest(identifier=requester_id, public_key=requester_pkey))
             return
 
         # Accept the request by signing the certificate.
         certificate = X509.generate_certificate(
             client_signing_request=request.certificate_signing_request,
-            client_identifier=requester_identifier,
+            client_identifier=requester_id,
             directory_service_secret_key=self._this_static_key_pair.secret_key,
             directory_service_identifier=self._this_identifier)
 
@@ -135,17 +138,16 @@ class LayerD(LayerN):
     def _handle_certificate_response(self, address: IPv6Address, port: Int, request: CertificateResponse) -> None:
         # Extract the certificate from the request.
         certificate: X509Certificate = request.certificate
+        directory_service_pkey = self._directory_service_static_public_key
+        directory_service_cert_sig = certificate.signature_value
 
         # Check the certificate was signed by the directory service.
-        if not QuantumSign.verify(
-                pkey=self._this_static_key_pair.public_key,
-                sig=certificate.signature_value,
-                id_=self._this_identifier):
+        if not QuantumSign.verify(pkey=directory_service_pkey, sig=directory_service_cert_sig, id_=self._this_identifier):
             self._logger.error("Invalid certificate signature.")
             return
 
         # Check the identifier on the certificate matches the expected one (anti-tamper).
-        if certificate.tbs_certificate.subject["common_name"] != self._this_identifier.hex():
+        if certificate.tbs_certificate.subject["common_name"] != self._this_identifier:
             self._logger.error("Invalid certificate identifier.")
             return
 
@@ -157,6 +159,7 @@ class LayerD(LayerN):
         # Mark the bootstrap sequence as complete.
         self._certificate = certificate
         self._waiting_for_certificate = False
+        self._logger.debug("Certificate Received")
 
     def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
