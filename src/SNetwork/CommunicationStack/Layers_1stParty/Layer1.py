@@ -23,7 +23,7 @@ class Layer1(LayerN):
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, application: LayerN) -> None:
         super().__init__(stack, node_info, Layer1Protocol, socket, isolated_logger(LoggerHandlers.LAYER_1))
         self._layer_application = application
-        self._logger.debug("Layer 1 Ready")
+        self._logger.info("Layer 1 Ready")
 
     def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
         ...
