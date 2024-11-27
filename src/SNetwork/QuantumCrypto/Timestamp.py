@@ -2,7 +2,7 @@ from __future__ import annotations
 import struct, time
 
 from SNetwork.Utils.Types import Bytes, Int
-from SNetwork.Config import MESSAGE_SIGNATURE_TOLERANCE
+from SNetwork.Config import TOLERANCE_MESSAGE_SIGNATURE
 
 
 class Timestamp:
@@ -12,6 +12,6 @@ class Timestamp:
         return packed_time
 
     @staticmethod
-    def check_time_stamp(time_stamp: Bytes, tolerance: Int = MESSAGE_SIGNATURE_TOLERANCE) -> bool:
+    def check_time_stamp(time_stamp: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> bool:
         unpacked_time = struct.unpack("!d", time_stamp)[0]
         return time.time() - unpacked_time < tolerance

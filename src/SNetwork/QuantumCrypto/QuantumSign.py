@@ -5,7 +5,7 @@ import pickle
 from cryptography.hazmat.primitives.constant_time import bytes_eq
 from pqcrypto.sign import dilithium4
 
-from SNetwork.Config import MESSAGE_SIGNATURE_TOLERANCE
+from SNetwork.Config import TOLERANCE_MESSAGE_SIGNATURE
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
@@ -41,7 +41,7 @@ class QuantumSign:
         return SignedMessagePair(extended_message=extended_message, signature=signature)
 
     @staticmethod
-    def verify(*, pkey: Bytes, sig: SignedMessagePair, id_: Bytes, tolerance: Int = MESSAGE_SIGNATURE_TOLERANCE) -> Bool:
+    def verify(*, pkey: Bytes, sig: SignedMessagePair, id_: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
         _, timestamp, recipient_id = pickle.loads(sig.extended_message)
 
         # Check if the timestamp is valid.
