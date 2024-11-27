@@ -50,7 +50,7 @@ class CommunicationStack:
 
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))
-        self._logger.debug(f"Bound to port {self._port}.")
+        self._logger.info(f"Bound to port {self._port}.")
         Thread(target=self._listen).start()
 
     def __del__(self) -> None:
@@ -66,7 +66,7 @@ class CommunicationStack:
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
-            data, address = self._socket_ln.recvfrom(10_000)
+            data, address = self._socket_ln.recvfrom(20_000)
             request = AbstractRequest.deserialize(data)
             if not request: continue
 

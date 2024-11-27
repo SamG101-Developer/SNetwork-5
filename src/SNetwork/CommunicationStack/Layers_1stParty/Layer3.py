@@ -151,10 +151,10 @@ class Layer3(LayerN):
         self._node_lookup_requests = {}
 
         # Start listening on the socket for this layer.
-        self._logger.debug("Layer 3 Ready")
+        self._logger.info("Layer 3 Ready")
 
     def join_distributed_hash_table_network(self, known_node: Connection) -> None:
-        self._logger.debug(f"Joining DHT network with known node {known_node}")
+        self._logger.info(f"Joining DHT network with known node {known_node}")
 
         # Calculate the distance between this node and the known node. Store the node in the appropriate k-bucket.
         distance = node_distance(self._this_identifier, known_node.that_identifier)

@@ -116,7 +116,7 @@ class Layer2(LayerN):
         super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_2))
 
         # Start listening on the socket for this layer.
-        self._logger.debug("Layer 2 Ready")
+        self._logger.info("Layer 2 Ready")
 
     def create_route(self) -> None:
         ...
