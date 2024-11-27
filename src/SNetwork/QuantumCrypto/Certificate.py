@@ -2,8 +2,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import datetime as dt, pickle, secrets
 
+from SNetwork.Config import TOLERANCE_CERTIFICATE_SIGNATURE
+from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
-from SNetwork.Utils.Types import Bytes, Dict, Str
+from SNetwork.Utils.Types import Bytes, Dict, Str, Bool
 
 
 @dataclass(kw_only=True)
@@ -25,6 +27,7 @@ class X509TbsCertificate:
     serial_number: int
     signature: Dict[Str, Str]
     issuer: Dict[Str, Bytes]
+    issuer_pk_info: Dict[Str, Bytes]
     validity: Dict[Str, Str]
     subject: Dict[Str, Bytes]
     subject_pk_info: Dict[Str, Bytes]
@@ -60,7 +63,7 @@ class X509:
     def generate_certificate(
             client_signing_request: X509CertificateSigningRequest,
             client_identifier: Bytes,
-            directory_service_secret_key: Bytes,
+            directory_service_key_pair: AsymmetricKeyPair,
             directory_service_identifier: Bytes) -> X509Certificate:
 
         tbs_certificate = X509TbsCertificate(
@@ -68,16 +71,17 @@ class X509:
             serial_number=int.from_bytes(secrets.token_bytes(20)),
             signature={"algorithm": "dilithium4"},
             issuer={"common_name": directory_service_identifier},
+            issuer_pk_info={"public_key": directory_service_key_pair.public_key},
             validity={
                 "not_before": dt.datetime.now(dt.UTC).isoformat(),
-                "not_after": (dt.datetime.now(dt.UTC) + dt.timedelta(days=365)).isoformat()},
+                "not_after": (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=TOLERANCE_CERTIFICATE_SIGNATURE)).isoformat()},
             subject=client_signing_request.certificate_request_info.subject,
             subject_pk_info={"public_key": client_signing_request.certificate_request_info.subject_pk_info["public_key"]})
 
         certificate = X509Certificate(
             tbs_certificate=tbs_certificate,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(skey=directory_service_secret_key, msg=pickle.dumps(tbs_certificate), id_=client_identifier))
+            signature_value=QuantumSign.sign(skey=directory_service_key_pair.secret_key, msg=pickle.dumps(tbs_certificate), id_=client_identifier))
 
         return certificate
 
