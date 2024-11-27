@@ -147,7 +147,7 @@ class LayerN:
         self._logger = logger
 
     @abstractmethod
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+    def _handle_command(self, address: IPv6Address, port: Int, data: RawRequest) -> None:
         """
         This method is used to call the correct handler methods depending on the command received. The command is
         extracted from the request, and the appropriate handler is called. There can be optional validation checks, such
@@ -175,11 +175,12 @@ class LayerN:
         the single recv function to know whether decryption is necessary or not.
         """
 
+        request = self._prep_data(connection, request)
         protocol = request.request_metadata.protocol
 
         # Create the ciphertext using the correct primary key from the connection.
         encrypted_data = SymmetricEncryption.encrypt(
-            data=self._prep_data(connection, request).serialize(),
+            data=request.serialize(),
             key=self._stack._layer4._conversations[connection.connection_token].e2e_primary_keys[request.request_metadata.message_number // 100])
 
         # Form an encrypted request and send it to the address.
