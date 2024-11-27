@@ -21,8 +21,10 @@ DHT_STORE_PATH = "store/%s.dat"
 
 # PROFILES
 PROFILE_FILE = "profiles/profiles.json"
+PROFILE_CACHE = "profiles/profile-cache/%s.pickle"
 DIRECTORY_SERVICE_PUBLIC_FILE = "profiles/directory-service.json"
 DIRECTORY_SERVICE_PRIVATE_FILE = "profiles/directory-service-servers/%s.json"
+DIRECTORY_SERVICE_NODE_CACHE = "profiles/directory-service-node-cache/%s.json"
 
 # Cryptographic constants.
 IDENTIFIER_LENGTH = 32

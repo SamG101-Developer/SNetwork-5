@@ -1,6 +1,7 @@
 import logging, json
 
-from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, TESTING_PORT_ADJUST
+from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, \
+    TESTING_PORT_ADJUST, PROFILE_CACHE
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.Utils.Files import SafeFileOpen
@@ -31,6 +32,10 @@ class ProfileManager:
             current_profiles[username] = {"username": username, "hashed_username": hashed_username.hex(), "hashed_password": hashed_password.hex(), "port": port}
             with SafeFileOpen(PROFILE_FILE, "w") as file:
                 json.dump(current_profiles, file)
+
+        # Create the profile cache file.
+        with SafeFileOpen(PROFILE_CACHE % hashed_username.hex(), "wb") as file:
+            file.write(b"")
 
     @staticmethod
     def validate_profile(username: Str, password: Str) -> Optional[Tuple[Bytes, Bytes, Int]]:
