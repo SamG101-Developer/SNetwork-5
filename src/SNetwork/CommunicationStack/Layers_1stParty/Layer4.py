@@ -74,14 +74,6 @@ class Layer4(LayerN):
         _conversations: A dictionary of active conversations with other nodes.
         _cached_certificates: A dictionary of cached certificates for other nodes.
         _cached_public_keys: A dictionary of cached public keys for other nodes.
-
-    Methods:
-        connect: Initiate a connection to a remote node.
-        _handle_command: Handles incoming commands from other nodes.
-        _handle_connection_request: Handles a connection request from a remote node.
-        _handle_connection_accept: Handles a connection accept from a remote node.
-        _handle_connection_close: Handles a connection close from a remote node.
-        _handle_rotate_key: Handles a request to rotate the session key.
     """
 
     _this_identifier: Bytes
@@ -123,7 +115,7 @@ class Layer4(LayerN):
         this_ephemeral_public_key_signed = QuantumSign.sign(
             skey=self._this_static_secret_key,
             msg=this_ephemeral_key_pair.public_key,
-            id_=connection_token + that_identifier)
+            aad=connection_token + that_identifier)
 
         # Create the Connection object to track the conversation.
         connection = Connection(
@@ -214,13 +206,13 @@ class Layer4(LayerN):
 
         # Verify the certificate of the remote node.
         d_pkey = request.certificate.tbs_certificate.issuer_pk_info["public_key"]
-        if not QuantumSign.verify(pkey=d_pkey, sig=request.certificate.signature_value, id_=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
+        if not QuantumSign.verify(pkey=d_pkey, sig=request.certificate.signature_value, aad=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
         that_static_public_key = request.certificate.tbs_certificate.subject_pk_info["public_key"]
 
         # Verify the signature of the ephemeral public key.
-        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.signed_epk, id_=local_session_id):
+        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.signed_epk, aad=local_session_id):
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
         self._cached_public_keys[metadata.that_identifier] = that_static_public_key
@@ -233,7 +225,7 @@ class Layer4(LayerN):
 
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.ephemeral_public_key)
-        kem_signature = QuantumSign.sign(skey=self._this_static_secret_key, msg=kem_wrapped_key.encapsulated, id_=remote_session_id)
+        kem_signature = QuantumSign.sign(skey=self._this_static_secret_key, msg=kem_wrapped_key.encapsulated, aad=remote_session_id)
         connection.e2e_primary_keys[0] = kem_wrapped_key.decapsulated
 
         # Create a new request responding to the handshake request.
@@ -257,13 +249,13 @@ class Layer4(LayerN):
 
         # Verify the certificate of the remote node.
         d_pkey = that_certificate.tbs_certificate.issuer_pk_info["public_key"]
-        if not QuantumSign.verify(pkey=d_pkey, sig=that_certificate.signature_value, id_=metadata.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
+        if not QuantumSign.verify(pkey=d_pkey, sig=that_certificate.signature_value, aad=metadata.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
         self._cached_certificates[metadata.that_identifier] = that_certificate
 
         # Verify the signature of the ephemeral public key.
-        if not QuantumSign.verify(pkey=that_public_key, sig=request.signature, id_=local_session_id):
+        if not QuantumSign.verify(pkey=that_public_key, sig=request.signature, aad=local_session_id):
             self._send(connection, ConnectionClose(reason="Invalid signature on kem wrapped key."))
             return
         self._cached_public_keys[metadata.that_identifier] = that_public_key

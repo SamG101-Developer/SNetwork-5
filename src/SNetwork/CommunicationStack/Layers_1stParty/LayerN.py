@@ -117,12 +117,6 @@ class LayerN:
 
     Attributes:
         _socket: The socket object used to send and receive data.
-
-    Methods:
-        _listen: The method that listens for incoming data.
-        _handle_command: The method that processes incoming data.
-        _send: The method that sends data to a connection.
-        _port: The port number used by the layer.
     """
 
     _stack: CommunicationStack
@@ -165,7 +159,7 @@ class LayerN:
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, request).serialize()
         protocol = request.request_metadata.protocol
-        self._logger.debug(f"-> Sending raw '{protocol}' ({len(encoded_data)}-byte) request to {connection.that_identifier.hex()}")
+        self._logger.debug(f"-> Sending raw '{protocol}' ({len(encoded_data)}-byte) request to {connection.that_identifier.hex()}@{connection.that_address}:{connection.that_port}")
         self._socket.sendto(encoded_data, connection.socket_address)
 
     @strict_isolation

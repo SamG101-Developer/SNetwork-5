@@ -195,7 +195,7 @@ class Layer2(LayerN):
         signature = QuantumSign.sign(
             skey=self._stack._layer4._this_static_secret_key,
             msg=self._stack._layer4._this_identifier + request.route_token + kem_wrapped_key.encapsulated,
-            id_=connection.connection_token + connection.that_identifier)
+            aad=connection.connection_token + connection.that_identifier)
         self._external_tunnel_keys[request.route_token] = kem_wrapped_key.decapsulated
 
         # Check if they are involved in maximum number of routes.
@@ -227,7 +227,7 @@ class Layer2(LayerN):
         if not QuantumSign.verify(
                 pkey=self._stack._layer4._cached_public_keys[request.acceptor_identifier],
                 sig=request.signature,
-                id_=self._route.route_token + self._route.nodes[-1].that_identifier):
+                aad=self._route.route_token + self._route.nodes[-1].that_identifier):
             self._logger.error("Invalid signature from candidate node.")
             return
 
