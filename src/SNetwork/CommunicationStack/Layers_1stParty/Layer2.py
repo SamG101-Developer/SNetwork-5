@@ -232,7 +232,7 @@ class Layer2(LayerN):
             return
 
         # Decapsulate the master key and store it.
-        self._route.candidate_node.e2e_primary_keys[0] = QuantumKem.decapsulate(
+        self._route.candidate_node.e2e_primary_key = QuantumKem.decapsulate(
             secret_key=self._route.candidate_node.this_ephemeral_secret_key,
             encapsulated=request.kem_master_key).decapsulated
         self._route.nodes.append(self._route.candidate_node)
@@ -262,7 +262,7 @@ class Layer2(LayerN):
         # Client receive (remove all layers of encryption).
         if self._route and self._route.route_token == request.route_token:
             for route_node in self._route.nodes:
-                request.data = SymmetricEncryption.decrypt(data=request.data, key=route_node.e2e_primary_keys[0])
+                request.data = SymmetricEncryption.decrypt(data=request.data, key=route_node.e2e_primary_key)
             self._handle_command(connection.that_address, connection.that_port, RawRequest.deserialize_to_json(request.data))
 
         # Tunnel a message backwards (add a layer of encryption).
@@ -274,7 +274,7 @@ class Layer2(LayerN):
         # The client will tunnel the message forwards to a node in the route.
         tunnel_request = self._prep_data(connection, tunnel_request)
         for route_node in self._route.nodes:
-            request_data = SymmetricEncryption.encrypt(data=tunnel_request.serialize(), key=route_node.e2e_primary_keys[0])
+            request_data = SymmetricEncryption.encrypt(data=tunnel_request.serialize(), key=route_node.e2e_primary_key)
             tunnel_request = TunnelDataRequest(route_token=self._route.route_token, data=request_data)
 
         # Send the data to the entry node.

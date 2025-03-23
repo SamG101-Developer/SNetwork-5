@@ -37,7 +37,7 @@ class Connection:
         connection_token: The unique connection identifier.
         connection_state: The current state of the connection.
         that_ephemeral_public_key: The ephemeral public key of the remote node for this connection.
-        e2e_primary_keys: The end-to-end primary keys other keys are derived from: {0: ..., 100: ...} for rotations.
+        e2e_primary_key: The end-to-end primary key.
     """
 
     that_address: IPv6Address
@@ -48,7 +48,7 @@ class Connection:
     that_ephemeral_public_key: Optional[Bytes] = field(default=b"")
     this_ephemeral_public_key: Optional[Bytes] = field(default=b"")
     this_ephemeral_secret_key: Optional[Bytes] = field(default=b"")
-    e2e_primary_keys: Optional[Dict[Int, Bytes]] = field(default_factory=dict)
+    e2e_primary_key: Optional[Bytes] = field(default=b"")
     socket_error_handler: Callable = field(default_factory=dict)
     key_rotations: Int = field(default=0, init=False)
     message_sent_number: Int = field(default=0, init=False)
@@ -175,7 +175,7 @@ class LayerN:
         # Create the ciphertext using the correct primary key from the connection.
         encrypted_data = SymmetricEncryption.encrypt(
             data=request.serialize(),
-            key=self._stack._layer4._conversations[connection.connection_token].e2e_primary_keys[request.request_metadata.message_number // 100])
+            key=self._stack._layer4._conversations[connection.connection_token].e2e_primary_key)
 
         # Form an encrypted request and send it to the address.
         secure_request = EncryptedRequest(

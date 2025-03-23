@@ -101,7 +101,7 @@ class LayerD(LayerN):
         self._node_cache.append((address, port, request.identifier))
 
         # Choose some random nodes to send back.
-        node_cache = random.sample(self._node_cache, 5)
+        node_cache = random.sample(self._node_cache, min(5, len(self._node_cache)))
         signature  = QuantumSign.sign(skey=self._directory_service_static_key_pair.secret_key, msg=node_cache, aad=request.identifier)
         self._send_secure(connection, BootstrapResponse(node_info=node_cache, signature=signature))
 
@@ -114,6 +114,7 @@ class LayerD(LayerN):
         # Add the nodes to the cache.
         self._node_cache.extend(request.node_info)
         self._waiting_for_bootstrap = False
+        self._logger.info(f"Extended node cache with {len(request.node_info)} nodes.")
 
         # Write the nodes to the cache.
         with SafeFileOpen(PROFILE_CACHE % self._identifier.hex(), "wb") as file:
