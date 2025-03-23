@@ -73,36 +73,36 @@ class CommunicationStack:
             data, address = self._socket_ln.recvfrom(20_000)
 
             try:
-                request = AbstractRequest.deserialize(data)
-                if not request: continue
+                response = AbstractRequest.deserialize(data)
+                if not response: continue
             except pickle.UnpicklingError:
-                self._logger.warning(f"Received invalid request from {address}.")
+                self._logger.warning(f"Received invalid response from {address}.")
                 continue
 
-            self._logger.debug(f"<- Received request from {address}.")
-
             # Handle secure requests
-            if request.secure:
-                token, encrypted_data = request.token, request.data
+            if response.secure:
+                token, encrypted_data = response.connection_token, response.encrypted_data
 
                 # Ensure the token represents a connection that both exists, and is in the accepted state.
                 if token in self._layer4._conversations.keys() and self._layer4._conversations[token].is_accepted():
-                    e2e_key = self._layer4._conversations[token].e2e_primary_keys[int(request.request_metadata.message_number) // 100]
+                    e2e_key = self._layer4._conversations[token].e2e_primary_key
                     decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
                     decrypted_json = pickle.loads(decrypted_data)
-                    request = decrypted_json
+                    response = decrypted_json
 
-                # Otherwise, the connection is unknown, and the request is ignored.
+                # Otherwise, the connection is unknown, and the response is ignored.
                 else:
-                    logging.warning(f"Received request from unknown token {token}.")
+                    logging.warning(f"Received response from unknown token {token}.")
                     continue
 
+            self._logger.debug(f"<- Received '{response.request_metadata.protocol}' response from {address}.")
+
             # Handle non-secure requests
-            while (layer := getattr(self, f"_layer{request.request_metadata.stack_layer}")) is None:
-                self._logger.debug(f"Waiting for layer {request.request_metadata.stack_layer}...")
+            while (layer := getattr(self, f"_layer{response.request_metadata.stack_layer}")) is None:
+                self._logger.debug(f"Waiting for layer {response.request_metadata.stack_layer}...")
                 time.sleep(1)
                 continue
-            Thread(target=layer._handle_command, args=(IPv6Address(address[0]), address[1], request)).start()
+            Thread(target=layer._handle_command, args=(IPv6Address(address[0]), address[1], response)).start()
 
 
 __all__ = ["CommunicationStack"]
