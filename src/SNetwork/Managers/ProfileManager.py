@@ -2,8 +2,7 @@ import json
 import logging
 import os
 
-from SNetwork.Config import PROFILE_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, TESTING_PORT_ADJUST, PROFILE_CACHE, \
-    DIRECTORY_SERVICE_PUBLIC_FILE
+from SNetwork.Config import PROFILE_FILE, TESTING_PORT_ADJUST, PROFILE_CACHE
 from SNetwork.Managers.KeyManager import KeyStoreData, KeyManager
 from SNetwork.QuantumCrypto.Certificate import X509
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
@@ -41,8 +40,8 @@ class ProfileManager:
                 json.dump(current_profiles, file)
 
         # Create the profile cache file.
-        with SafeFileOpen(PROFILE_CACHE % hashed_username.hex(), "wb") as file:
-            file.write(b"")
+        with SafeFileOpen(PROFILE_CACHE % hashed_username.hex(), "w") as file:
+            json.dump({}, file)
 
         # Key and certificate information, ands et information into the keyring.
         static_key_pair = QuantumSign.generate_key_pair()
@@ -80,6 +79,11 @@ class ProfileManager:
         if hashed_password.hex() != current_profiles[username]["hashed_password"]:
             logging.error("Incorrect password")
             return None
+
+        # Set the cache to "{}" if the file is empty or doesn't exist.
+        if not os.path.exists(PROFILE_CACHE % hashed_username.hex()) or os.path.getsize(PROFILE_CACHE % hashed_username.hex()) == 0:
+            with SafeFileOpen(PROFILE_CACHE % hashed_username.hex(), "w") as file:
+                json.dump({}, file)
 
         # Return the hashed username and port.
         return hashed_username, hashed_password, current_profiles[username]["port"] + TESTING_PORT_ADJUST

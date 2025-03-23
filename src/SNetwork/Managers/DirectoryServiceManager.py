@@ -11,7 +11,7 @@ from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.Utils.Files import SafeFileOpen
-from SNetwork.Utils.Types import Bytes, Int, Bool, Str, Optional, Tuple, Dict
+from SNetwork.Utils.Types import Bytes, Int, Bool, Str, Optional, Tuple, Dict, List
 
 
 class DirectoryServiceManager:
@@ -60,15 +60,15 @@ class DirectoryServiceManager:
         return True
 
     @staticmethod
-    def get_random_directory_profile() -> tuple[IPv6Address, Int, Bytes, Bytes]:
+    def get_random_directory_profile(exclude: List[Str] = None) -> tuple[Str, IPv6Address, Int, Bytes, Bytes]:
         # Load the current directory services.
         with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
             directory_services = json.load(file)
 
         # Choose a random directory service to connect to.
-        name = random.choice(list(directory_services.keys()))
+        name = random.choice([k for k in directory_services.keys() if k not in (exclude or [])])
         entry = directory_services[name]
-        return IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"]), bytes.fromhex(entry["public_key"])
+        return name, IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"]), bytes.fromhex(entry["public_key"])
 
     @staticmethod
     def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int, Bytes, AsymmetricKeyPair]]:

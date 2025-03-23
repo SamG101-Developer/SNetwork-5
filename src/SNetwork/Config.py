@@ -21,7 +21,7 @@ DHT_STORE_PATH = "store/%s.dat"
 
 # PROFILES
 PROFILE_FILE = "profiles/profiles.json"
-PROFILE_CACHE = "profiles/profile-cache/%s.pickle"
+PROFILE_CACHE = "profiles/profile-cache/%s.json"
 DIRECTORY_SERVICE_PUBLIC_FILE = "profiles/directory-service.json"
 DIRECTORY_SERVICE_PRIVATE_FILE = os.path.join("profiles", "directory-service-servers", "%s.json")
 DIRECTORY_SERVICE_NODE_CACHE = "profiles/directory-service-node-cache/%s.json"

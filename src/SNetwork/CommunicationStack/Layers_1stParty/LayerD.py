@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pickle
+import json
 import random
 from dataclasses import dataclass
 from enum import Enum
@@ -12,12 +12,13 @@ from typing import TYPE_CHECKING
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, RawRequest
 from SNetwork.Config import PROFILE_CACHE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
+from SNetwork.Managers.KeyManager import KeyStoreData
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.QuantumCrypto.QuantumSign import SignedMessagePair, QuantumSign
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
-from SNetwork.Utils.Types import Bool, Optional, Bytes, Int, Tuple, List
+from SNetwork.Utils.Types import Bool, Optional, Bytes, Int, Tuple, List, Dict
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -53,23 +54,25 @@ class LayerD(LayerN):
     _identifier: Optional[Bytes]
     _is_directory_service: Bool
     _directory_service_static_key_pair: Optional[AsymmetricKeyPair]
+    _directory_service_temp_map: Dict[Tuple[IPv6Address, Int], Bytes]
     _certificate: Optional[X509Certificate]
     _node_cache: List[Tuple[IPv6Address, Int, Bytes]]
 
     _waiting_for_bootstrap: Bool
 
     def __init__(
-            self, stack: CommunicationStack, socket: Socket, is_directory_service: Bool, identifier: Bytes,
-            certificate: X509Certificate, directory_service_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
+            self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, is_directory_service: Bool,
+            identifier: Bytes, certificate: X509Certificate,
+            directory_service_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
 
-        super().__init__(stack, None, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
+        super().__init__(stack, node_info, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
         self._stack._layerD = self
 
         self._identifier = identifier
         self._is_directory_service = is_directory_service
         self._directory_service_static_key_pair = directory_service_static_key_pair
+        self._directory_service_temp_map = {}
         self._certificate = certificate
-
         self._node_cache = []
         self._waiting_for_bootstrap = False
 
@@ -77,20 +80,24 @@ class LayerD(LayerN):
         self._logger.info("Layer D Ready")
 
     def request_bootstrap(self) -> None:
-        # Choose a random directory service to connect to.
-        d_address, d_port, d_identifier, d_pkey = DirectoryServiceManager.get_random_directory_profile()
-        self._directory_service_static_key_pair = AsymmetricKeyPair(public_key=d_pkey)
-        self._logger.info(f"Contacting DS at {d_address}:{d_port}.")
+        exclude = []
 
-        # Create an encrypted connection to the directory service.
-        connection = self._stack._layer4.connect(d_address, d_port, d_identifier)
-        if not connection:
-            self._logger.error("Failed to connect to the directory service.")
-            return
+        for i in range(2):
+            # Choose a random directory service to connect to.
+            d_name, d_address, d_port, d_identifier, d_pkey = DirectoryServiceManager.get_random_directory_profile(exclude)
+            self._directory_service_temp_map[(d_address, d_port)] = d_pkey
+            self._logger.info(f"Contacting DS at {d_address}:{d_port} for boostrap.")
+            exclude.append(d_name)
 
-        # Send the bootstrap request to the directory service.
-        self._waiting_for_bootstrap = True
-        self._send_secure(connection, BootstrapRequest(identifier=self._identifier, certificate=self._certificate))
+            # Create an encrypted connection to the directory service.
+            connection = self._stack._layer4.connect(d_address, d_port, d_identifier)
+            if not connection:
+                self._logger.error("Failed to connect to the directory service.")
+                return
+
+            # Send the bootstrap request to the directory service.
+            self._waiting_for_bootstrap = True
+            self._send_secure(connection, BootstrapRequest(identifier=self._identifier, certificate=self._certificate))
 
     def _handle_bootstrap_request(self, address: IPv6Address, port: Int, request: BootstrapRequest) -> None:
         # Extract the metadata from the request.
@@ -107,7 +114,8 @@ class LayerD(LayerN):
 
     def _handle_bootstrap_response(self, address: IPv6Address, port: Int, request: BootstrapResponse) -> None:
         # Check the signature of the response.
-        if not QuantumSign.verify(pkey=self._directory_service_static_key_pair.public_key, sig=request.signature, aad=self._identifier):
+        d_pkey = self._directory_service_temp_map.get((address, port))
+        if not QuantumSign.verify(pkey=d_pkey, sig=request.signature, aad=self._identifier):
             self._logger.error("Invalid signature in bootstrap response.")
             return
 
@@ -116,9 +124,13 @@ class LayerD(LayerN):
         self._waiting_for_bootstrap = False
         self._logger.info(f"Extended node cache with {len(request.node_info)} nodes.")
 
+        with SafeFileOpen(PROFILE_CACHE % self._node_info.hashed_username.hex(), "r") as file:
+            current_cache = json.load(file)
+
         # Write the nodes to the cache.
-        with SafeFileOpen(PROFILE_CACHE % self._identifier.hex(), "wb") as file:
-            pickle.dump(self._node_cache, file)
+        with SafeFileOpen(PROFILE_CACHE % self._node_info.hashed_username.hex(), "w") as file:
+            current_cache |= {node_info[2].hex(): [node_info[0].packed.hex(), node_info[1], node_info[2].hex()] for node_info in request.node_info}
+            json.dump(current_cache, file, indent=4)
 
     def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
