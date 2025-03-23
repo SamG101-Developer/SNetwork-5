@@ -10,12 +10,11 @@ from SNetwork.CommunicationStack.Layers_1stParty.Layer1 import Layer1
 from SNetwork.CommunicationStack.Layers_1stParty.Layer2 import Layer2
 from SNetwork.CommunicationStack.Layers_1stParty.Layer3 import Layer3
 from SNetwork.CommunicationStack.Layers_1stParty.Layer4 import Layer4
-from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import AbstractRequest
 from SNetwork.CommunicationStack.Layers_2ndParty.LayerHTTP.LayerHttp import LayerHTTP
 from SNetwork.Config import DEFAULT_IPV6
-from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Managers.KeyManager import KeyStoreData
+from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Types import Bytes, Int
 
@@ -30,9 +29,9 @@ class CommunicationStack:
     _layer2: Optional[Layer2]
     _layer3: Optional[Layer3]
     _layer4: Optional[Layer4]
-    _layerD: Optional[LayerD]
 
     _port: Int
+    _listen_thread: Thread
     _socket_ln: Socket
 
     def __init__(self, hashed_username: Bytes, port: Int):
@@ -51,24 +50,34 @@ class CommunicationStack:
         # Bind the sockets to the default IPv6 address and the specified port.
         self._socket_ln.bind((DEFAULT_IPV6, self._port))
         self._logger.info(f"Bound to port {self._port}.")
-        Thread(target=self._listen).start()
+        self._listen_thread = Thread(target=self._listen, daemon=True)
+        self._listen_thread.start()
 
     def __del__(self) -> None:
         self._socket_ln and self._socket_ln.close()
 
     def start(self, info: KeyStoreData) -> None:
+        self._logger.info(f"Communication stack started @{info.identifier.hex()}.")
+
         # Create the layers of the stack.
         self._layer4 = Layer4(self, info, self._socket_ln)
         self._layer3 = Layer3(self, info, self._socket_ln)
         self._layer2 = Layer2(self, info, self._socket_ln)
         self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self))
 
+        self._logger.info(f"All layers set: {self._layer1}, {self._layer2}, {self._layer3}, {self._layer4}.")
+
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
             data, address = self._socket_ln.recvfrom(20_000)
-            request = AbstractRequest.deserialize(data)
-            if not request: continue
+
+            try:
+                request = AbstractRequest.deserialize(data)
+                if not request: continue
+            except pickle.UnpicklingError:
+                self._logger.warning(f"Received invalid request from {address}.")
+                continue
 
             self._logger.debug(f"<- Received request from {address}.")
 
@@ -89,8 +98,7 @@ class CommunicationStack:
                     continue
 
             # Handle non-secure requests
-            layer = getattr(self, f"_layer{request.request_metadata.stack_layer}")
-            while not layer:
+            while (layer := getattr(self, f"_layer{request.request_metadata.stack_layer}")) is None:
                 self._logger.debug(f"Waiting for layer {request.request_metadata.stack_layer}...")
                 time.sleep(1)
                 continue

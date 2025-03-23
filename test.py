@@ -1,12 +1,16 @@
+import glob
+import json
+import os
+import subprocess
 from threading import Thread, Lock
-import json, subprocess
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QMouseEvent
-from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QApplication, QDialog
+from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QDialog, QApplication
 
-from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE
+from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
+from SNetwork.Managers.KeyManager import KeyManager
 from SNetwork.Managers.ProfileManager import ProfileManager
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Types import Optional
@@ -150,8 +154,18 @@ class TestGui(QWidget):
 
 
 def create_directory_services() -> None:
+    for file in glob.glob(DIRECTORY_SERVICE_PRIVATE_FILE % "*"):
+        if os.path.exists(file):
+            os.chmod(file, 0o700)
+            os.remove(file)
+    with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "w") as file:
+        json.dump({}, file)
+
     for i in range(4):
-        DirectoryServiceManager.new_directory_service(f"snetwork.directory-service.{i}")
+        username = f"snetwork.directory-service.{i}"
+        if info := DirectoryServiceManager.validate_directory_profile(username):
+            KeyManager.del_info(info[0])
+        DirectoryServiceManager.create_directory_profile(username)
 
 
 def create_nodes(n: int, offset: int = 0) -> None:
@@ -167,7 +181,6 @@ if __name__ == "__main__":
 
     sys.excepthook = lambda e, v, t: sys.__excepthook__(e, v, t)
     # create_directory_services()
-    # create_nodes(NODE_COUNT)
     app = QApplication(sys.argv)
     window = TestGui()
     sys.exit(app.exec())

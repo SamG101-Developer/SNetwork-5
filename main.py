@@ -32,6 +32,10 @@ def create_argument_parser() -> ArgumentParser:
 
     profile_manager_list_profiles = profile_manager_subparsers.add_parser("list", help="List all profiles")
 
+    profile_manager_delete_profile = profile_manager_subparsers.add_parser("delete", help="Delete a profile")
+    profile_manager_delete_profile.add_argument("--name", type=str, required=True, help="Name of profile", dest="username")
+    profile_manager_delete_profile.add_argument("--pass", type=str, help="Password of profile", dest="password")
+
     # Join Parser
     join_parser = subparsers.add_parser("join", help="Join the network")
     join_parser.add_argument("--name", type=str, required=True, help="Name of profile", dest="username")

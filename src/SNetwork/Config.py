@@ -1,6 +1,6 @@
-from ipaddress import IPv6Address
-
 # Connection related constants.
+import os
+
 CONNECTION_TIMEOUT = 5
 HOP_COUNT = 3
 CONNECTION_TOKEN_LENGTH = 32
@@ -23,7 +23,7 @@ DHT_STORE_PATH = "store/%s.dat"
 PROFILE_FILE = "profiles/profiles.json"
 PROFILE_CACHE = "profiles/profile-cache/%s.pickle"
 DIRECTORY_SERVICE_PUBLIC_FILE = "profiles/directory-service.json"
-DIRECTORY_SERVICE_PRIVATE_FILE = "profiles/directory-service-servers/%s.json"
+DIRECTORY_SERVICE_PRIVATE_FILE = os.path.join("profiles", "directory-service-servers", "%s.json")
 DIRECTORY_SERVICE_NODE_CACHE = "profiles/directory-service-node-cache/%s.json"
 
 # Cryptographic constants.
