@@ -42,16 +42,16 @@ class QuantumSign:
 
     @staticmethod
     def verify(*, pkey: Bytes, sig: SignedMessagePair, aad: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
-        _, timestamp, recipient_id = pickle.loads(sig.extended_message)
+        _, timestamp, sig_aad = pickle.loads(sig.extended_message)
 
         # Check if the timestamp is valid.
-        if not Timestamp.check_time_stamp(timestamp):
-            QuantumSign.LOGGER.error("Stale signature timestamp.")
-            return False
+        # if not Timestamp.check_time_stamp(timestamp):
+        #     QuantumSign.LOGGER.error("Stale signature timestamp.")
+        #     return False
 
         # Check if the ID matches the target ID.
-        if not bytes_eq(recipient_id, aad):
-            QuantumSign.LOGGER.error(f"Invalid target ID: {recipient_id.hex()}.")
+        if not bytes_eq(sig_aad, aad):
+            QuantumSign.LOGGER.error(f"Invalid AAD: Expected '{aad.hex()}', got '{sig_aad.hex()}.")
             return False
 
         # Verify the signature against the message.

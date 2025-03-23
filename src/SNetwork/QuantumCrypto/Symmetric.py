@@ -37,7 +37,7 @@ class SymmetricEncryption:
     @staticmethod
     def encrypt(*, data: Bytes, key: Bytes) -> Bytes:
         # Generate a random nonce, encrypt the plaintext and return it with the nonce prepended.
-        nonce = os.urandom(SymmetricEncryption.NONCE_LENGTH)
+        nonce = secrets.token_bytes(SymmetricEncryption.NONCE_LENGTH)
         encryption_engine = SymmetricEncryption.ALGORITHM(key)
         ciphertext = encryption_engine.encrypt(nonce, data, None)
         return nonce + ciphertext

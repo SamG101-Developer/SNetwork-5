@@ -17,7 +17,7 @@ class QuantumKem:
     @staticmethod
     def encapsulate(*, public_key: Bytes) -> WrappedKeyPair:
         # Generate a shared key and encapsulation.
-        decapsulated, encapsulated = kyber1024.encrypt(public_key)
+        encapsulated, decapsulated = kyber1024.encrypt(public_key)
         return WrappedKeyPair(decapsulated=decapsulated, encapsulated=encapsulated)
 
     @staticmethod
