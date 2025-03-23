@@ -30,10 +30,10 @@ class QuantumSign:
         return AsymmetricKeyPair(public_key=public_key, secret_key=secret_key)
 
     @staticmethod
-    def sign(*, skey: Bytes, msg: Bytes, id_: Bytes) -> SignedMessagePair:
+    def sign(*, skey: Bytes, msg: Bytes, aad: Bytes) -> SignedMessagePair:
         # Add the target identifier and timestamp to the message and hash it.
         timestamp = Timestamp.generate_time_stamp()
-        extended_message = pickle.dumps((msg, timestamp, id_))
+        extended_message = pickle.dumps((msg, timestamp, aad))
         hashed_message = Hasher.hash(data=extended_message, algorithm=QuantumSign.HASH_ALGORITHM)
 
         # Sign the hashed extended message and return the signature.
@@ -41,7 +41,7 @@ class QuantumSign:
         return SignedMessagePair(extended_message=extended_message, signature=signature)
 
     @staticmethod
-    def verify(*, pkey: Bytes, sig: SignedMessagePair, id_: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
+    def verify(*, pkey: Bytes, sig: SignedMessagePair, aad: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
         _, timestamp, recipient_id = pickle.loads(sig.extended_message)
 
         # Check if the timestamp is valid.
@@ -50,8 +50,8 @@ class QuantumSign:
             return False
 
         # Check if the ID matches the target ID.
-        if not bytes_eq(recipient_id, id_):
-            QuantumSign.LOGGER.error(f"Invalid target ID: {recipient_id}.")
+        if not bytes_eq(recipient_id, aad):
+            QuantumSign.LOGGER.error(f"Invalid target ID: {recipient_id.hex()}.")
             return False
 
         # Verify the signature against the message.

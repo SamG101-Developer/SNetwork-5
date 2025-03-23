@@ -46,7 +46,7 @@ class X509:
             client_identifier: Bytes,
             client_secret_key: Bytes,
             client_public_key: Bytes,
-            directory_service_identifier: Bytes) -> X509CertificateSigningRequest:
+            signer_identifier: Bytes) -> X509CertificateSigningRequest:
 
         request_info = X509CertificateSigningRequestInfo(
             subject={"common_name": client_identifier},
@@ -55,7 +55,7 @@ class X509:
         request = X509CertificateSigningRequest(
             certificate_request_info=request_info,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(skey=client_secret_key, msg=pickle.dumps(request_info), id_=directory_service_identifier))
+            signature_value=QuantumSign.sign(skey=client_secret_key, msg=pickle.dumps(request_info), aad=signer_identifier))
 
         return request
 
@@ -64,13 +64,13 @@ class X509:
             client_signing_request: X509CertificateSigningRequest,
             client_identifier: Bytes,
             directory_service_key_pair: AsymmetricKeyPair,
-            directory_service_identifier: Bytes) -> X509Certificate:
+            signer_identifier: Bytes) -> X509Certificate:
 
         tbs_certificate = X509TbsCertificate(
             version="v3",
             serial_number=int.from_bytes(secrets.token_bytes(20)),
             signature={"algorithm": "dilithium4"},
-            issuer={"common_name": directory_service_identifier},
+            issuer={"common_name": signer_identifier},
             issuer_pk_info={"public_key": directory_service_key_pair.public_key},
             validity={
                 "not_before": dt.datetime.now(dt.UTC).isoformat(),
@@ -81,9 +81,13 @@ class X509:
         certificate = X509Certificate(
             tbs_certificate=tbs_certificate,
             signature_algorithm={"algorithm": "dilithium4"},
-            signature_value=QuantumSign.sign(skey=directory_service_key_pair.secret_key, msg=pickle.dumps(tbs_certificate), id_=client_identifier))
+            signature_value=QuantumSign.sign(skey=directory_service_key_pair.secret_key, msg=pickle.dumps(tbs_certificate), aad=client_identifier))
 
         return certificate
+
+
+def validate_certificate(certificate: X509Certificate) -> Bool:
+    ...
 
 
 __all__ = ["X509"]
