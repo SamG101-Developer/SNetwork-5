@@ -3,10 +3,6 @@ from ipaddress import IPv6Address
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
 from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
-from SNetwork.QuantumCrypto.Certificate import X509
-from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
-from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
-from SNetwork.QuantumCrypto.QuantumSign import QuantumSign
 from SNetwork.Utils.Types import Bytes, Int, Tuple, Dict
 
 
@@ -35,10 +31,9 @@ class Node:
     def __init__(self, hashed_username: Bytes, hashed_password: Bytes, port: Int) -> None:
         # Create the communication stack, and the bootstrapper layer.
         self._stack = CommunicationStack(hashed_username, port)
-
-        # Update the node cache with the directory service.
         self._info = KeyManager.get_info(hashed_username)
-        self._boot = LayerD(self._stack, self._stack._socket_ln, False, self._info.identifier, self._info.certificate)
+        self._boot = LayerD(
+            self._stack, self._info, self._stack._socket_ln, False, self._info.identifier, self._info.certificate)
 
         # Save the information of the node and start the communication stack.
         self._stack.start(self._info)
