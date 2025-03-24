@@ -13,6 +13,7 @@ from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNPro
     RawRequest
 from SNetwork.Config import TOLERANCE_CERTIFICATE_SIGNATURE
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
+from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
@@ -27,8 +28,8 @@ if TYPE_CHECKING:
 class Layer4Protocol(LayerNProtocol, Enum):
     ConnectionRequest = 0x01
     ConnectionAccept = 0x02
-    ConnectionClose = 0x03
-    ConnectionRotateKey = 0x04
+    ConnectionAck = 0x03
+    ConnectionClose = 0x04
     ConnectionData = 0x05
 
 
@@ -47,15 +48,13 @@ class ConnectionAccept(RawRequest):
 
 
 @dataclass(kw_only=True)
-class ConnectionClose(RawRequest):
-    reason: Str
+class ConnectionAck(RawRequest):
+    signature: SignedMessagePair
 
 
 @dataclass(kw_only=True)
-class ConnectionRotateKey(RawRequest):
-    cur_key_hashed: Bytes
-    new_key_wrapped: Bytes
-    after: Int
+class ConnectionClose(RawRequest):
+    reason: Str
 
 
 class Layer4(LayerN):
@@ -138,24 +137,6 @@ class Layer4(LayerN):
             pass
         return connection if connection.is_accepted() else None
 
-    # @strict_isolation
-    # def rotate_key(self, connection: Connection) -> None:
-    #     # Generate a new master key and wrap it with the current key.
-    #     new_key = SymmetricEncryption.generate_key()
-    #     current_key = list(connection.e2e_primary_keys.values())[-1]
-    #     wrapped_key = SymmetricEncryption.wrap_new_key(current_key=current_key, new_key=new_key)
-    #
-    #     # Hash the current key and increment the key rotation counter.
-    #     current_key_hashed = Hasher.hash(data=current_key, algorithm=HashAlgorithm.SHA3_256())
-    #     connection.key_rotations += 1
-    #     connection.e2e_primary_keys[connection.key_rotations * 100] = new_key
-    #
-    #     # Create the JSON request to rotate the session key.
-    #     self._send_secure(connection, ConnectionRotateKey(
-    #         cur_key_hashed=current_key_hashed,
-    #         new_key_wrapped=wrapped_key,
-    #         after=connection.key_rotations))
-
     @strict_isolation
     def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
@@ -177,14 +158,14 @@ class Layer4(LayerN):
                 thread = Thread(target=self._handle_connection_accept, args=(request,))
                 thread.start()
 
+            # Handle a response from a node that has ACKed a connection acceptance.
+            case Layer4Protocol.ConnectionAck if state == ConnectionState.PendingConnection:
+                thread = Thread(target=self._handle_connection_ack, args=(request,))
+                thread.start()
+
             # Handle a close connection request from a node that a connection has been established with.
             case Layer4Protocol.ConnectionClose:
                 thread = Thread(target=self._handle_connection_close, args=(request,))
-                thread.start()
-
-            # Handle a request to rotate the session key from a node that a connection has been established with.
-            case Layer4Protocol.ConnectionRotateKey:
-                thread = Thread(target=self._handle_rotate_key, args=(request,))
                 thread.start()
 
             # Handle either an invalid command from a connected token, or an invalid command/state combination.
@@ -202,33 +183,34 @@ class Layer4(LayerN):
             connection_state=ConnectionState.PendingConnection,
             that_ephemeral_public_key=request.ephemeral_public_key)
 
-        # Store the connection and create the local and remote session identifiers.
-        self._conversations[connection.connection_token] = connection
+        # Create the local and remote session identifiers.
         local_session_id  = connection.connection_token + self._this_identifier
         remote_session_id = connection.connection_token + connection.that_identifier
+        that_static_public_key = request.certificate.tbs_certificate.subject_pk_info["public_key"]
 
         # Verify the certificate of the remote node.
-        d_pkey = request.certificate.tbs_certificate.issuer_pk_info["public_key"]
-        if not QuantumSign.verify(pkey=d_pkey, sig=request.certificate.signature_value, aad=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
+        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.certificate.signature_value, aad=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
-        that_static_public_key = request.certificate.tbs_certificate.subject_pk_info["public_key"]
 
         # Verify the signature of the ephemeral public key.
         if not QuantumSign.verify(pkey=that_static_public_key, sig=request.signed_epk, aad=local_session_id):
             self._send(connection, ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
-        self._cached_public_keys[metadata.that_identifier] = that_static_public_key
-        self._cached_certificates[metadata.that_identifier] = request.certificate
 
         # Validate the connection token's timestamp is within the tolerance.
         if not Timestamp.check_time_stamp(metadata.connection_token[-8:]):
             self._send(connection, ConnectionClose(reason="Invalid connection token timestamp."))
             return
 
+        # Cache the public key and certificate of the remote node.
+        self._cached_public_keys[connection.that_identifier] = that_static_public_key
+        self._cached_certificates[connection.that_identifier] = request.certificate
+
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.ephemeral_public_key)
-        kem_signature = QuantumSign.sign(skey=self._this_static_secret_key, msg=kem_wrapped_key.encapsulated, aad=remote_session_id)
+        kem_signature = QuantumSign.sign(
+            skey=self._this_static_secret_key, msg=kem_wrapped_key.encapsulated, aad=remote_session_id)
         connection.e2e_primary_key = kem_wrapped_key.decapsulated
 
         # Create a new request responding to the handshake request.
@@ -237,32 +219,34 @@ class Layer4(LayerN):
             kem_master_key=kem_wrapped_key.encapsulated,
             signature=kem_signature))
 
-        # Clean up the connection object and mark it as open.
+        # Clean up the connection object and mark it as pending.
         del connection.that_ephemeral_public_key
-        connection.connection_state = ConnectionState.ConnectionOpen
+        connection.connection_state = ConnectionState.PendingConnection
+        self._conversations[connection.connection_token] = connection
 
     def _handle_connection_accept(self, request: ConnectionAccept) -> None:
         # Get the connection object for this request.
         metadata = request.request_metadata
         connection = self._conversations[metadata.connection_token]
-        local_session_id = connection.connection_token + self._this_identifier
 
-        # Extract the certificate and public key from the request.
-        that_certificate = request.certificate
-        that_public_key = that_certificate.tbs_certificate.subject_pk_info["public_key"]
+        # Create the local and remote session identifiers.
+        local_session_id = connection.connection_token + self._this_identifier
+        remote_session_id = connection.connection_token + connection.that_identifier
+        that_static_public_key = request.certificate.tbs_certificate.subject_pk_info["public_key"]
 
         # Verify the certificate of the remote node.
-        d_pkey = that_certificate.tbs_certificate.issuer_pk_info["public_key"]
-        if not QuantumSign.verify(pkey=d_pkey, sig=that_certificate.signature_value, aad=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
+        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.certificate.signature_value, aad=connection.that_identifier, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
             self._send(connection, ConnectionClose(reason="Invalid certificate."))
             return
-        self._cached_certificates[metadata.that_identifier] = that_certificate
 
-        # Verify the signature of the ephemeral public key.
-        if not QuantumSign.verify(pkey=that_public_key, sig=request.signature, aad=local_session_id):
+        # Verify the signature of the kem encapsulation.
+        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.signature, aad=local_session_id):
             self._send(connection, ConnectionClose(reason="Invalid signature on kem wrapped key."))
             return
-        self._cached_public_keys[metadata.that_identifier] = that_public_key
+
+        # Cache the public key and certificate of the remote node.
+        self._cached_certificates[connection.that_identifier] = request.certificate
+        self._cached_public_keys[connection.that_identifier] = that_static_public_key
 
         # Unwrap the master key and store it in the connection object.
         kem_wrapped_key = QuantumKem.decapsulate(
@@ -270,10 +254,36 @@ class Layer4(LayerN):
             encapsulated=request.kem_master_key)
         connection.e2e_primary_key = kem_wrapped_key.decapsulated
 
+        # Send the ACK back to the other node, containing a signature of the master key.
+        hashed_master_key = Hasher.hash(data=connection.e2e_primary_key, algorithm=HashAlgorithm.SHA3_256)
+        signature = QuantumSign.sign(skey=self._this_static_secret_key, msg=hashed_master_key, aad=remote_session_id)
+        self._send(connection, ConnectionAck(signature=signature))
+
         # Clean up the connection object and mark it as open.
         del connection.this_ephemeral_secret_key
         del connection.this_ephemeral_public_key
         connection.connection_state = ConnectionState.ConnectionOpen
+        self._logger.info(f"Connection established with {connection.that_identifier.hex()}.")
+
+    def _handle_connection_ack(self, request: ConnectionAck) -> None:
+        # Get the connection object for this request.
+        metadata = request.request_metadata
+        connection = self._conversations[metadata.connection_token]
+
+        # Create the local and remote session identifiers.
+        local_session_id = connection.connection_token + self._this_identifier
+        remote_session_id = connection.connection_token + connection.that_identifier
+        that_static_public_key = self._cached_public_keys[connection.that_identifier]
+
+        # Verify the signature of the master key.
+        hashed_master_key = Hasher.hash(data=connection.e2e_primary_key, algorithm=HashAlgorithm.SHA3_256)
+        if not QuantumSign.verify(pkey=that_static_public_key, sig=request.signature, raw=hashed_master_key, aad=local_session_id):
+            self._send(connection, ConnectionClose(reason="Invalid signature on master key."))
+            return
+
+        # Clean up the connection object and mark it as open.
+        connection.connection_state = ConnectionState.ConnectionOpen
+        self._logger.info(f"Connection established with {connection.that_identifier.hex()}.")
 
     def _handle_connection_close(self, request: ConnectionClose) -> None:
         # Get the connection object for this request.
@@ -284,25 +294,3 @@ class Layer4(LayerN):
         # Clean up the connection object and mark it as closed.
         connection.connection_state = ConnectionState.ConnectionClosed
         del self._conversations[metadata.connection_token]
-
-    def _handle_rotate_key(self, request: ConnectionRotateKey) -> None:
-        # # Get the connection object for this request.
-        # metadata = request.request_metadata
-        # connection = self._conversations[metadata.connection_token]
-        #
-        # # Check if the current key matches the hashed key.
-        # current_key = list(connection.e2e_primary_keys.values())[-1]
-        # current_key_hashed = Hasher.hash(data=current_key, algorithm=HashAlgorithm.SHA3_256())
-        # if current_key_hashed != request.cur_key_hashed:
-        #     self._send(connection, ConnectionClose(reason="Invalid current key hash."))
-        #     return
-        #
-        # # Unwrap the new key and store it in the connection object.
-        # new_key = SymmetricEncryption.unwrap_new_key(
-        #     current_key=current_key,
-        #     wrapped_key=request.new_key_wrapped)
-        # connection.e2e_primary_keys[request.after * 100] = new_key
-        #
-        # # Clean up the connection object and mark it as open.
-        # connection.key_rotations += 1
-        ...

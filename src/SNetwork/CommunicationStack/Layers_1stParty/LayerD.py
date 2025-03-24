@@ -58,8 +58,6 @@ class LayerD(LayerN):
     _certificate: Optional[X509Certificate]
     _node_cache: List[Tuple[IPv6Address, Int, Bytes]]
 
-    _waiting_for_bootstrap: Bool
-
     def __init__(
             self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, is_directory_service: Bool,
             identifier: Bytes, certificate: X509Certificate,
@@ -74,7 +72,6 @@ class LayerD(LayerN):
         self._directory_service_temp_map = {}
         self._certificate = certificate
         self._node_cache = []
-        self._waiting_for_bootstrap = False
 
         # Start listening on the socket for this layer.
         self._logger.info("Layer D Ready")
@@ -96,7 +93,6 @@ class LayerD(LayerN):
                 return
 
             # Send the bootstrap request to the directory service.
-            self._waiting_for_bootstrap = True
             self._send_secure(connection, BootstrapRequest(identifier=self._identifier, certificate=self._certificate))
 
     def _handle_bootstrap_request(self, address: IPv6Address, port: Int, request: BootstrapRequest) -> None:
@@ -121,7 +117,6 @@ class LayerD(LayerN):
 
         # Add the nodes to the cache.
         self._node_cache.extend(request.node_info)
-        self._waiting_for_bootstrap = False
         self._logger.info(f"Extended node cache with {len(request.node_info)} nodes.")
 
         with SafeFileOpen(PROFILE_CACHE % self._node_info.hashed_username.hex(), "r") as file:
@@ -142,7 +137,7 @@ class LayerD(LayerN):
                 thread.start()
 
             # Nodes will handle a bootstrap response.
-            case LayerDProtocol.BootstrapResponse if not self._is_directory_service and self._waiting_for_bootstrap:
+            case LayerDProtocol.BootstrapResponse if not self._is_directory_service:
                 thread = Thread(target=self._handle_bootstrap_response, args=(address, port, request))
                 thread.start()
 

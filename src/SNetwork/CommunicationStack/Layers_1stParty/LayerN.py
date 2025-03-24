@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import pickle
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -6,11 +8,10 @@ from ipaddress import IPv6Address
 from logging import Logger
 from socket import socket as Socket
 from typing import TYPE_CHECKING
-import pickle
 
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
-from SNetwork.Utils.Types import Bytes, Callable, Dict, Json, Int, Optional, Tuple, Bool, Type, Str
+from SNetwork.Utils.Types import Bytes, Callable, Int, Optional, Tuple, Bool, Type, Str
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -159,7 +160,9 @@ class LayerN:
         # Add the connection token, and send the unencrypted data to the address.
         encoded_data = self._prep_data(connection, request).serialize()
         protocol = request.request_metadata.protocol
-        self._logger.debug(f"-> Sending raw '{protocol}' ({len(encoded_data)}-byte) request to {connection.that_identifier.hex()}@{connection.that_address}:{connection.that_port}")
+        self._logger.debug(
+            f"-> Sending raw '{protocol}' ({len(encoded_data)}-byte) request to "
+            f"{connection.that_identifier.hex()}@{connection.that_address}:{connection.that_port}")
         self._socket.sendto(encoded_data, connection.socket_address)
 
     @strict_isolation
@@ -171,6 +174,10 @@ class LayerN:
 
         request = self._prep_data(connection, request)
         protocol = request.request_metadata.protocol
+
+        # Queue the request until the connection is accepted.
+        while not connection.is_accepted():
+            pass
 
         # Create the ciphertext using the correct primary key from the connection.
         encrypted_data = SymmetricEncryption.encrypt(
