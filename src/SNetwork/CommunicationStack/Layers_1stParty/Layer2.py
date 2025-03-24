@@ -90,21 +90,6 @@ class Layer2(LayerN):
         _route_forward_token_map: A mapping of connection tokens to the next node's connection token.
         _route_reverse_token_map: A mapping of connection tokens to the previous node's connection token.
         _external_tunnel_keys: A mapping of route tokens to tunnel keys.
-
-    Methods:
-        create_route: Creates a new route between the client and the exit node.
-        forward_internet_data: Forwards data to the Internet.
-        _handle_extend_connection: Handles a request to extend a connection for a route.
-        _handle_tunnel_request: Handles a request to become part of the route.
-        _handle_tunnel_ephemeral_key: Handles the ephemeral public key of the new candidate node for the route.
-        _handle_tunnel_primary_key: Handles a wrapped primary key from the client.
-        _handle_tunnel_accept: Handles the candidate node's acceptance of the route.
-        _handle_tunnel_reject: Handles the candidate node's rejection of the route.
-        _handle_forward_message: Handles a request to tunnel a message forwards.
-        _handle_internet_send: Handles a request to tunnel data to the Internet.
-        _handle_internet_recv: Handles a request to tunnel data from the Internet.
-        _tunnel_message_forwards: Tunnels a message forwards (+ message prep).
-        _tunnel_message_backwards: Tunnels a message backwards (+ message prep).
     """
 
     _route: Optional[Route]

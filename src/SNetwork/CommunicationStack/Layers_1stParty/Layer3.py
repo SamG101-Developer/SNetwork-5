@@ -112,24 +112,6 @@ class Layer3(LayerN):
         _ping_queue: The list of connections that have been pinged.
         _stored_keys: The list of keys stored in the DHT.
         _node_lookup_requests: The list of node lookup requests.
-
-    Methods:
-        join_distributed_hash_table_network: Joins the DHT network.
-        get_resource: Retrieves a resource from the DHT.
-        put_resource: Stores a resource in the DHT.
-        _handle_command: Handles a command received from a remote node.
-        _node_lookup: Initiates a node lookup request.
-        _recursive_search: Recursively searches for a resource in the DHT.
-        _update_k_buckets: Updates the k-buckets with a new node.
-        _closest_k_nodes_to: Returns the k closest nodes to a target identifier.
-        _handle_ping_request: Handles a ping request.
-        _handle_pong_response: Handles a pong response.
-        _handle_put_resource_request: Handles a put resource request.
-        _handle_get_resource_request: Handles a get resource request.
-        _handle_return_resource_response: Handles a return resource response.
-        _handle_find_node_request: Handles a find node request.
-        _handle_find_node_response: Handles a find node response.
-        _all_known_nodes: Returns all known nodes in the DHT (flattens k_buckets).
     """
 
     _this_identifier: Bytes
