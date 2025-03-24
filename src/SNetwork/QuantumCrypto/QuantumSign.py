@@ -41,8 +41,19 @@ class QuantumSign:
         return SignedMessagePair(extended_message=extended_message, signature=signature)
 
     @staticmethod
-    def verify(*, pkey: Bytes, sig: SignedMessagePair, aad: Bytes, tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
-        _, timestamp, sig_aad = pickle.loads(sig.extended_message)
+    def verify(*, pkey: Bytes, sig: SignedMessagePair, raw: Bytes = None, aad: Bytes = b"", tolerance: Int = TOLERANCE_MESSAGE_SIGNATURE) -> Bool:
+        """
+        Verify the signature against the message.
+
+        Args:
+            pkey: The public key to verify the signature with.
+            sig: The signature to verify.
+            raw: The raw message that the signature should match (None means no matching required).
+            aad: The additional authenticated data.
+            tolerance: The tolerance for the signature timestamp.
+        """
+
+        sig_raw, timestamp, sig_aad = pickle.loads(sig.extended_message)
 
         # Check if the timestamp is valid.
         # if not Timestamp.check_time_stamp(timestamp):
@@ -51,13 +62,18 @@ class QuantumSign:
 
         # Check if the ID matches the target ID.
         if not bytes_eq(sig_aad, aad):
-            QuantumSign.LOGGER.error(f"Invalid AAD: Expected '{aad.hex()}', got '{sig_aad.hex()}.")
+            QuantumSign.LOGGER.error(f"Invalid AAD.")
             return False
 
         # Verify the signature against the message.
         hashed_message = Hasher.hash(data=sig.extended_message, algorithm=QuantumSign.HASH_ALGORITHM)
         if not dilithium4.verify(pkey, hashed_message, sig.signature):
-            QuantumSign.LOGGER.error("Invalid signature.")
+            QuantumSign.LOGGER.error("Invalid signature (message tampered).")
+            return False
+
+        # Check if the raw message matches the signature.
+        if raw is not None and not bytes_eq(raw, sig_raw):
+            QuantumSign.LOGGER.error("Invalid signature (raw message mismatch).")
             return False
 
         # If all checks pass, return True.
