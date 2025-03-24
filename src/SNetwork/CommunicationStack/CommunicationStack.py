@@ -65,8 +65,6 @@ class CommunicationStack:
         self._layer2 = Layer2(self, info, self._socket_ln)
         self._layer1 = Layer1(self, info, self._socket_ln, LayerHTTP(self))
 
-        self._logger.info(f"All layers set: {self._layer1}, {self._layer2}, {self._layer3}, {self._layer4}.")
-
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
@@ -84,7 +82,7 @@ class CommunicationStack:
                 token, encrypted_data = response.connection_token, response.encrypted_data
 
                 # Ensure the token represents a connection that both exists, and is in the accepted state.
-                if token in self._layer4._conversations.keys() and self._layer4._conversations[token].is_accepted():
+                if token in self._layer4._conversations.keys():
                     e2e_key = self._layer4._conversations[token].e2e_primary_key
                     decrypted_data = SymmetricEncryption.decrypt(data=encrypted_data, key=e2e_key)
                     decrypted_json = pickle.loads(decrypted_data)
