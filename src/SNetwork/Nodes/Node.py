@@ -2,7 +2,8 @@ from ipaddress import IPv6Address
 
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
-from SNetwork.Managers.KeyManager import KeyManager, KeyStoreData
+from SNetwork.Managers.KeyManager import KeyManager
+from SNetwork.Nodes.AbstractNode import AbstractNode
 from SNetwork.Utils.Types import Bytes, Int, Tuple, Dict
 
 
@@ -22,10 +23,7 @@ class NodeCache:
         pass
 
 
-class Node:
-    _stack: CommunicationStack
-    _info: KeyStoreData
-    _boot: LayerD
+class Node(AbstractNode):
     _cache: NodeCache
 
     def __init__(self, hashed_username: Bytes, hashed_password: Bytes, port: Int) -> None:
@@ -39,3 +37,6 @@ class Node:
         self._stack.start(self._info)
         self._boot.request_bootstrap()
         self._stack._logger.info(f"Node started.")
+
+    def join_network(self) -> None:
+        self._stack._layer2.create_route()
