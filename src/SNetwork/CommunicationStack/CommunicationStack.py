@@ -79,7 +79,7 @@ class CommunicationStack:
 
             # Handle secure requests
             if response.secure:
-                token, encrypted_data = response.connection_token, response.encrypted_data
+                token, encrypted_data = response.conn_tok, response.ciphertext
 
                 # Ensure the token represents a connection that both exists, and is in the accepted state.
                 if token in self._layer4._conversations.keys():
@@ -93,11 +93,11 @@ class CommunicationStack:
                     logging.warning(f"Received response from unknown token {token}.")
                     continue
 
-            self._logger.debug(f"<- Received '{response.request_metadata.protocol}' response from {address}.")
+            self._logger.debug(f"<- Received '{response.meta.proto}' response from {address}.")
 
             # Handle non-secure requests
-            while (layer := getattr(self, f"_layer{response.request_metadata.stack_layer}")) is None:
-                self._logger.debug(f"Waiting for layer {response.request_metadata.stack_layer}...")
+            while (layer := getattr(self, f"_layer{response.meta.stack_layer}")) is None:
+                self._logger.debug(f"Waiting for layer {response.meta.stack_layer}...")
                 time.sleep(1)
                 continue
             Thread(target=layer._handle_command, args=(IPv6Address(address[0]), address[1], response)).start()

@@ -100,7 +100,7 @@ class ProfileManager:
             static_key_pair: AsymmetricKeyPair) -> None:
 
         # Generate the certificate signing request.
-        certificate_signing_request = this_certificate_signing_request = X509.generate_certificate_signing_request(
+        certificate_signing_request = X509.generate_certificate_signing_request(
             client_identifier=identifier,
             client_secret_key=static_key_pair.secret_key,
             client_public_key=static_key_pair.public_key,

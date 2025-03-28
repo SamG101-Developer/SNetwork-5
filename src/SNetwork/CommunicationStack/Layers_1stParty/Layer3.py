@@ -37,7 +37,7 @@ class NodeLookupRequest:
 
     @property
     def closest_distance(self) -> Int:
-        return node_distance(self.target_node_identifier, self.current_closest.that_identifier)
+        return node_distance(self.target_node_identifier, self.current_closest.peer_id)
 
 
 class Layer3Protocol(LayerNProtocol, Enum):
@@ -107,14 +107,14 @@ class Layer3(LayerN):
     before any data is sent.
 
     Attributes:
-        _this_identifier: The identifier of this node.
+        _self_id: The identifier of this node.
         _k_buckets: The list of k-buckets, each containing a list of connections.
         _ping_queue: The list of connections that have been pinged.
         _stored_keys: The list of keys stored in the DHT.
         _node_lookup_requests: The list of node lookup requests.
     """
 
-    _this_identifier: Bytes
+    _self_id: Bytes
     _k_buckets: KBuckets
     _ping_queue: List[Tuple[Float, Connection]]
     _stored_keys: List[Bytes]
@@ -124,7 +124,7 @@ class Layer3(LayerN):
         super().__init__(stack, node_info, Layer3Protocol, socket, isolated_logger(LoggerHandlers.LAYER_3))
 
         # Store this node's identifier.
-        self._this_identifier = self._stack._layer4._this_identifier
+        self._self_id = self._stack._layer4._self_id
 
         # Initialize the DHT-oriented attributes.
         self._k_buckets = [[] for _ in range(8 * DHT_KEY_LENGTH)]
@@ -139,12 +139,12 @@ class Layer3(LayerN):
         self._logger.info(f"Joining DHT network with known node {known_node}")
 
         # Calculate the distance between this node and the known node. Store the node in the appropriate k-bucket.
-        distance = node_distance(self._this_identifier, known_node.that_identifier)
+        distance = node_distance(self._self_id, known_node.peer_id)
         k_bucket_index = math.floor(math.log2(distance))
         self._k_buckets[k_bucket_index].append(known_node)
 
         # Lookup this node, as this contacts the known node and other nodes, joining this node to the network.
-        self._node_lookup(self._this_identifier)
+        self._node_lookup(self._self_id)
 
         # todo: after lookup is done, host the stored keys
         # for file_identifier in glob.glob(DHT_STORE_PATH % "*"):
@@ -171,29 +171,30 @@ class Layer3(LayerN):
             request = PutResourceRequest(resource_key=resource_key, resource_value=value)
             self._send_secure(node, request)
 
-    def _node_lookup(self, target_node_identifier: Bytes, find_value: Bool = False) -> None:
+    def _node_lookup(self, peer_id: Bytes, find_value: Bool = False) -> None:
         # Get this node's closest "alpha" nodes, and initiate a node lookup request.
         closest_alpha_nodes = self._all_known_nodes[:DHT_ALPHA]
-        lookup_request = NodeLookupRequest(target_node_identifier=target_node_identifier, current_closest=None)
-        self._node_lookup_requests[target_node_identifier] = lookup_request
+        lookup_request = NodeLookupRequest(target_node_identifier=peer_id, current_closest=None)
+        self._node_lookup_requests[peer_id] = lookup_request
 
         # Send a find node request to the closest alpha nodes.
         for closest_alpha_node in closest_alpha_nodes:
-            request = FindNodeRequest(target_identifier=target_node_identifier)
+            request = FindNodeRequest(target_identifier=peer_id)
             self._send_secure(closest_alpha_node, request)
 
+    # todo: param names
     def _recursive_search(self, node_identifier: Bytes, node_address: Tuple[Str, Int], target_identifier: Bytes) -> None:
         # Connect to the node, and update the k-buckets.
-        connection = self._stack._layer4.connect(node_address, node_identifier)
+        conn = self._stack._layer4.connect(node_address, node_identifier)
 
         # Send a get resource request to the node.
-        connection = self._stack._layer4.connect(node_address, node_identifier)
+        conn = self._stack._layer4.connect(node_address, node_identifier)
         request = FindNodeRequest(target_identifier=target_identifier)
-        self._send_secure(connection, request)
+        self._send_secure(conn, request)
 
     def _update_k_buckets(self, node: Connection) -> None:
         # Determine the distance between this node and the new node.
-        distance = node_distance(self._this_identifier, node.that_identifier)
+        distance = node_distance(self._self_id, node.peer_id)
         if distance == 0: return
 
         # Determine the k-bucket for the new node.
@@ -201,8 +202,8 @@ class Layer3(LayerN):
 
         # If the node is already in the k-bucket, move it to the tail.
         k_bucket_node_ids = [n.identifier for n in k_bucket]
-        if node.that_identifier in k_bucket_node_ids:
-            node_index = k_bucket_node_ids.index(node.that_identifier)
+        if node.peer_id in k_bucket_node_ids:
+            node_index = k_bucket_node_ids.index(node.peer_id)
             k_bucket.append(k_bucket.pop(node_index))
 
         # Otherwise, if the k-bucket is not full, add the node to the tail.
@@ -235,161 +236,154 @@ class Layer3(LayerN):
                 k_bucket.append(head_node)
 
     def _closest_k_nodes_to(self, target_identifier: Bytes) -> KBucket:
-        node_distances = [(c, node_distance(c.that_identifier, target_identifier)) for c in self._all_known_nodes]
+        node_distances = [(c, node_distance(c.peer_id, target_identifier)) for c in self._all_known_nodes]
         node_distances.sort(key=operator.itemgetter(1))
         closest_nodes = [c for c, _ in node_distances[:DHT_K_VALUE]]
         return closest_nodes
 
     @strict_isolation
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: Json) -> None:
         # Deserialize the request and call the appropriate handler.
-        request_type = globals()[Layer3Protocol(data["protocol"]).name]
-        request = request_type.deserialize(data)
-        token = request.connection_token
+        request_type = globals()[Layer3Protocol(req["protocol"]).name]
+        req = request_type.deserialize(req)
 
         # Match the command to the appropriate handler.
-        match request.protocol:
+        match req.proto:
 
             # Handle a ping request.
             case Layer3Protocol.PingRequest.value:
-                thread = Thread(target=self._handle_ping_request, args=(address, port, request))
+                thread = Thread(target=self._handle_ping_request, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle a pong response.
             case Layer3Protocol.PongResponse.value:
-                thread = Thread(target=self._handle_pong_response, args=(request,))
+                thread = Thread(target=self._handle_pong_response, args=(req,))
                 thread.start()
 
             # Handle a put resource request.
             case Layer3Protocol.PutResourceRequest.value:
-                thread = Thread(target=self._handle_put_resource_request, args=(request,))
+                thread = Thread(target=self._handle_put_resource_request, args=(req,))
                 thread.start()
 
             # Handle a get resource request.
             case Layer3Protocol.GetResourceRequest.value:
-                thread = Thread(target=self._handle_get_resource_request, args=(request,))
+                thread = Thread(target=self._handle_get_resource_request, args=(req,))
                 thread.start()
 
             # Handle a return resource response.
             case Layer3Protocol.ReturnResourcePassResponse.value:
-                thread = Thread(target=self._handle_return_resource_pass_response, args=(request,))
+                thread = Thread(target=self._handle_return_resource_pass_response, args=(req,))
                 thread.start()
 
             # Handle a find node request.
             case Layer3Protocol.FindNodeRequest.value:
-                thread = Thread(target=self._handle_find_node_request, args=(request,))
+                thread = Thread(target=self._handle_find_node_request, args=(req,))
                 thread.start()
 
             # Handle a find node response.
             case Layer3Protocol.FindNodeResponse.value:
-                thread = Thread(target=self._handle_find_node_response, args=(request,))
+                thread = Thread(target=self._handle_find_node_response, args=(req,))
                 thread.start()
 
             # Handle either an invalid command from a connected token, or an invalid command/state combination.
             case _:
-                self._logger.warning(f"Received invalid command from token {token}.")
+                self._logger.warning(f"Received invalid command from token {req.conn_token}.")
 
-    def _handle_ping_request(self, request: PingRequest) -> None:
+    def _handle_ping_request(self, req: PingRequest) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
 
         # Respond with a pong response, containing the request timestamp.
-        self._send_secure(connection, PongResponse(ping_timestamp=request.ping_timestamp))
+        self._send_secure(conn, PongResponse(ping_timestamp=req.ping_timestamp))
 
-    def _handle_pong_response(self, address: IPv6Address, request: PongResponse) -> None:
+    def _handle_pong_response(self, peer_ip: IPv6Address, req: PongResponse) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
-        timestamp = request.ping_timestamp
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
+        timestamp = req.ping_timestamp
 
         # Remove the ping request from the ping queue.
-        if (timestamp, connection) in self._ping_queue:
-            self._ping_queue.remove((timestamp, connection))
+        if (timestamp, conn) in self._ping_queue:
+            self._ping_queue.remove((timestamp, conn))
             return
 
         # If a "pong" is received either from a non-pinged node, or after the timeout, log a warning.
-        self._logger.warning(f"Received unexpected pong response from {connection.that_identifier}.")
+        self._logger.warning(f"Received unexpected pong response from {conn.peer_id}.")
 
-    def _handle_put_resource_request(self, request: PutResourceRequest) -> None:
+    def _handle_put_resource_request(self, req: PutResourceRequest) -> None:
         # Store the key and value in the DHT.
-        self._stored_keys.append(request.resource_key)
-        with SafeFileOpen(DHT_STORE_PATH % request.resource_key.hex(), "wb") as fo:
-            fo.write(request.resource_value)
+        self._stored_keys.append(req.resource_key)
+        with SafeFileOpen(DHT_STORE_PATH % req.resource_key.hex(), "wb") as fo:
+            fo.write(req.resource_value)
 
-    def _handle_get_resource_request(self, request: GetResourceRequest) -> None:
+    def _handle_get_resource_request(self, req: GetResourceRequest) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
-        resource_key = request.resource_key
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
+        resource_key = req.resource_key
 
         # Check if this node is hosting the requested key.
         if resource_key in self._stored_keys:
             with SafeFileOpen(DHT_STORE_PATH % resource_key.hex(), "rb") as fo:
                 resource_value = fo.read()
             response = ReturnResourcePassResponse(resource_key=resource_key, resource_value=resource_value)
-            self._send_secure(connection, response)
+            self._send_secure(conn, response)
 
         # Otherwise, find the closest known nodes to the key.
         else:
             closest_nodes = self._closest_k_nodes_to(resource_key)
-            closest_node_identifiers = [n.that_identifier for n in closest_nodes]
-            closest_node_addresses = [(n.that_address.exploded, n.that_port) for n in closest_nodes]
+            closest_node_identifiers = [n.peer_id for n in closest_nodes]
+            closest_node_addresses = [(n.peer_ip.exploded, n.peer_port) for n in closest_nodes]
 
             response = ReturnResourceFailResponse(
                 resource_key=resource_key,
                 closest_node_identifiers=closest_node_identifiers,
                 closest_node_addresses=closest_node_addresses)
-            self._send_secure(connection, response)
+            self._send_secure(conn, response)
 
-    def _handle_return_resource_pass_response(self, request: ReturnResourcePassResponse) -> None:
+    def _handle_return_resource_pass_response(self, req: ReturnResourcePassResponse) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
-        resource_key = request.resource_key
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
+        resource_key = req.resource_key
 
         # Store the key and value in the DHT.
         self._stored_keys.append(resource_key)
         with SafeFileOpen(DHT_STORE_PATH % resource_key.hex(), "wb") as fo:
-            fo.write(request.resource_value)
+            fo.write(req.resource_value)
 
-    def _handle_return_resource_fail_response(self, request: ReturnResourceFailResponse) -> None:
+    def _handle_return_resource_fail_response(self, req: ReturnResourceFailResponse) -> None:
         # Otherwise, try to request the resource from the closest nodes.
-        for node_identifier, node_address in zip(request.closest_node_identifiers, request.closest_node_addresses):
-            thread = Thread(target=self._recursive_search, args=(node_identifier, node_address, request.resource_key))
+        for node_identifier, node_address in zip(req.closest_node_identifiers, req.closest_node_addresses):
+            thread = Thread(target=self._recursive_search, args=(node_identifier, node_address, req.resource_key))
             thread.start()
 
-    def _handle_find_node_request(self, address: IPv6Address, request: FindNodeRequest) -> None:
+    def _handle_find_node_request(self, peer_ip: IPv6Address, req: FindNodeRequest) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
 
         # Get the k closest nodes to the target identifier.
-        closest_nodes = self._closest_k_nodes_to(request.target_identifier)
-        closest_node_identifiers = [n.that_identifier for n in closest_nodes]
-        closest_node_addresses = [(n.that_address.exploded, n.that_port) for n in closest_nodes]
+        closest_nodes = self._closest_k_nodes_to(req.target_identifier)
+        closest_node_identifiers = [n.peer_id for n in closest_nodes]
+        closest_node_addresses = [(n.peer_ip.exploded, n.peer_port) for n in closest_nodes]
 
         response = FindNodeResponse(
-            target_identifier=request.target_identifier,
+            target_identifier=req.target_identifier,
             closest_nodes_identifiers=closest_node_identifiers,
             closest_nodes_addresses=closest_node_addresses)
-        self._send_secure(connection, response)
+        self._send_secure(conn, response)
 
-    def _handle_find_node_response(self, address: IPv6Address, request: FindNodeResponse) -> None:
+    def _handle_find_node_response(self, peer_ip: IPv6Address, req: FindNodeResponse) -> None:
         # Get the connection object for this request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
-        target_identifier = request.target_identifier
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
+        target_identifier = req.target_identifier
         node_lookup_request = self._node_lookup_requests[target_identifier]
 
         # Mark the node as queried.
         with node_lookup_request.lock:
-            if connection not in node_lookup_request.queried_nodes:
-                node_lookup_request.queried_nodes.append(connection)
+            if conn not in node_lookup_request.queried_nodes:
+                node_lookup_request.queried_nodes.append(conn)
 
         # If all the closest nodes returned have already been queried, return.
-        new_node_identifiers = request.closest_nodes_identifiers
-        new_node_addresses = request.closest_nodes_addresses
+        new_node_identifiers = req.closest_nodes_identifiers
+        new_node_addresses = req.closest_nodes_addresses
         for new_node_identifier, new_node_address in zip(new_node_identifiers.copy(), new_node_addresses.copy()):
             if new_node_identifier in self._all_known_nodes:
                 new_node_identifiers.remove(new_node_identifier)

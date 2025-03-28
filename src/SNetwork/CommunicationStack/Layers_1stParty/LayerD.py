@@ -51,11 +51,11 @@ class LayerD(LayerN):
     sending IP/ID info, etc. The static key pair is required for to authenticate connections.
     """
 
-    _identifier: Optional[Bytes]
+    _self_id: Optional[Bytes]
+    _self_cert: Optional[X509Certificate]
     _is_directory_service: Bool
     _directory_service_static_key_pair: Optional[AsymmetricKeyPair]
     _directory_service_temp_map: Dict[Tuple[IPv6Address, Int], Bytes]
-    _certificate: Optional[X509Certificate]
     _node_cache: List[Tuple[IPv6Address, Int, Bytes]]
 
     def __init__(
@@ -66,11 +66,11 @@ class LayerD(LayerN):
         super().__init__(stack, node_info, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
         self._stack._layerD = self
 
-        self._identifier = identifier
+        self._self_id = identifier
+        self._self_cert = certificate
         self._is_directory_service = is_directory_service
         self._directory_service_static_key_pair = directory_service_static_key_pair
         self._directory_service_temp_map = {}
-        self._certificate = certificate
         self._node_cache = []
 
         # Start listening on the socket for this layer.
@@ -87,31 +87,30 @@ class LayerD(LayerN):
             exclude.append(d_name)
 
             # Create an encrypted connection to the directory service.
-            connection = self._stack._layer4.connect(d_address, d_port, d_identifier)
-            if not connection:
+            conn = self._stack._layer4.connect(d_address, d_port, d_identifier)
+            if not conn:
                 self._logger.error("Failed to connect to the directory service.")
                 return
 
             # Send the bootstrap request to the directory service.
-            self._send_secure(connection, BootstrapRequest(identifier=self._identifier, certificate=self._certificate))
+            self._send_secure(conn, BootstrapRequest(identifier=self._self_id, certificate=self._self_cert))
 
-    def _handle_bootstrap_request(self, address: IPv6Address, port: Int, request: BootstrapRequest) -> None:
+    def _handle_bootstrap_request(self, peer_ip: IPv6Address, peer_port: Int, req: BootstrapRequest) -> None:
         # Extract the metadata from the request.
-        metadata = request.request_metadata
-        connection = self._stack._layer4._conversations[metadata.connection_token]
+        conn = self._stack._layer4._conversations[req.meta.conn_tok]
 
         # Cache this node and its associated information.
-        self._node_cache.append((address, port, request.identifier))
+        self._node_cache.append((peer_ip, peer_port, req.identifier))
 
         # Choose some random nodes to send back.
         node_cache = random.sample(self._node_cache, min(5, len(self._node_cache)))
-        signature  = QuantumSign.sign(skey=self._directory_service_static_key_pair.secret_key, msg=node_cache, aad=request.identifier)
-        self._send_secure(connection, BootstrapResponse(node_info=node_cache, signature=signature))
+        signature  = QuantumSign.sign(skey=self._directory_service_static_key_pair.secret_key, msg=node_cache, aad=req.identifier)
+        self._send_secure(conn, BootstrapResponse(node_info=node_cache, signature=signature))
 
     def _handle_bootstrap_response(self, address: IPv6Address, port: Int, request: BootstrapResponse) -> None:
         # Check the signature of the response.
         d_pkey = self._directory_service_temp_map.get((address, port))
-        if not QuantumSign.verify(pkey=d_pkey, sig=request.signature, aad=self._identifier):
+        if not QuantumSign.verify(pkey=d_pkey, sig=request.signature, aad=self._self_id):
             self._logger.error("Invalid signature in bootstrap response.")
             return
 
@@ -119,28 +118,28 @@ class LayerD(LayerN):
         self._node_cache.extend(request.node_info)
         self._logger.info(f"Extended node cache with {len(request.node_info)} nodes.")
 
-        with SafeFileOpen(PROFILE_CACHE % self._node_info.hashed_username.hex(), "r") as file:
+        with SafeFileOpen(PROFILE_CACHE % self._self_node_info.hashed_username.hex(), "r") as file:
             current_cache = json.load(file)
 
         # Write the nodes to the cache.
-        with SafeFileOpen(PROFILE_CACHE % self._node_info.hashed_username.hex(), "w") as file:
+        with SafeFileOpen(PROFILE_CACHE % self._self_node_info.hashed_username.hex(), "w") as file:
             current_cache |= {node_info[2].hex(): [node_info[0].packed.hex(), node_info[1], node_info[2].hex()] for node_info in request.node_info}
             json.dump(current_cache, file, indent=4)
 
-    def _handle_command(self, address: IPv6Address, port: Int, request: RawRequest) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
 
-        match request.request_metadata.protocol:
+        match request.meta.proto:
             # Directory service will handle a bootstrap request.
             case LayerDProtocol.BootstrapRequest if self._is_directory_service:
-                thread = Thread(target=self._handle_bootstrap_request, args=(address, port, request))
+                thread = Thread(target=self._handle_bootstrap_request, args=(peer_ip, peer_port, request))
                 thread.start()
 
             # Nodes will handle a bootstrap response.
             case LayerDProtocol.BootstrapResponse if not self._is_directory_service:
-                thread = Thread(target=self._handle_bootstrap_response, args=(address, port, request))
+                thread = Thread(target=self._handle_bootstrap_response, args=(peer_ip, peer_port, request))
                 thread.start()
 
             # Default case
             case _:
-                self._logger.error(f"Invalid request received: {request.request_metadata.protocol}")
+                self._logger.error(f"Invalid request received: {request.meta.proto}")

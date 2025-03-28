@@ -181,6 +181,7 @@ if __name__ == "__main__":
 
     sys.excepthook = lambda e, v, t: sys.__excepthook__(e, v, t)
     # create_directory_services()
+    # create_nodes(NODE_COUNT)
     app = QApplication(sys.argv)
     window = TestGui()
     sys.exit(app.exec())

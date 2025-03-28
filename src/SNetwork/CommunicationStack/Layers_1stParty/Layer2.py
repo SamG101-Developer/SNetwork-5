@@ -107,14 +107,14 @@ class Layer2(LayerN):
         ...
 
     @strict_isolation
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: Json) -> None:
         # Deserialize the request and call the appropriate handler.
-        request_type = globals()[Layer2Protocol(data["protocol"]).name]
-        request = request_type.deserialize(data)
-        token = request.connection_token
+        request_type = globals()[Layer2Protocol(req["protocol"]).name]
+        request = request_type.deserialize(req)
+        token = request.conn_tok
 
         # Match the command to the appropriate handler.
-        match request.protocol:
+        match request.proto:
 
             # Handle a request, as the current final node, to extend the route to another node.
             case Layer2Protocol.ConnectionRouteExtendRequest:
@@ -128,17 +128,17 @@ class Layer2(LayerN):
 
             # Handle a candidate node's acceptance to joining the route.
             case Layer2Protocol.ConnectionRouteJoinAcceptResponse:
-                thread = Thread(target=self._handle_connection_route_join_accept_response, args=(address, request))
+                thread = Thread(target=self._handle_connection_route_join_accept_response, args=(peer_ip, request))
                 thread.start()
 
             # Handle a candidate node's rejection to joining the route.
             case Layer2Protocol.ConnectionRouteJoinRejectResponse:
-                thread = Thread(target=self._handle_connection_route_join_reject_response, args=(address, request))
+                thread = Thread(target=self._handle_connection_route_join_reject_response, args=(peer_ip, request))
                 thread.start()
 
             # Handle a request to tunnel data backwards or forwards in the route.
             case Layer2Protocol.TunnelDataRequest:
-                thread = Thread(target=self._handle_tunnel_data_request, args=(address, request))
+                thread = Thread(target=self._handle_tunnel_data_request, args=(peer_ip, request))
                 thread.start()
 
             # Handle either an invalid command from a connected token, or an invalid command/state combination.
@@ -148,14 +148,14 @@ class Layer2(LayerN):
     @strict_isolation
     def _handle_connection_route_extend_request(self, request: ConnectionRouteExtendRequest) -> None:
         # Get the connection object for this request.
-        metdata = request.request_metadata
-        connection = self._stack._layer4._conversations[metdata.connection_token]
+        metdata = request.meta
+        connection = self._stack._layer4._conversations[metdata.conn_tok]
 
         # Create a connection to the new node as the route owner has requested.
         new_connection = self._stack._layer4.connect(
-            address=IPv6Address(request.next_address),
-            port=request.next_port,
-            that_identifier=request.next_identifier)
+            peer_ip=IPv6Address(request.next_address),
+            peer_port=request.next_port,
+            peer_id=request.next_identifier)
 
         # A successful connection allows for the route join request to be sent.
         if new_connection:
@@ -172,22 +172,22 @@ class Layer2(LayerN):
     @strict_isolation
     def _handle_connection_route_join_request(self, request: ConnectionRouteJoinRequest) -> None:
         # Get the connection object for this request.
-        metdata = request.request_metadata
-        connection = self._stack._layer4._conversations[metdata.connection_token]
+        metdata = request.meta
+        connection = self._stack._layer4._conversations[metdata.conn_tok]
 
         # Create a master key and kem-wrapped master key.
         kem_wrapped_key = QuantumKem.encapsulate(public_key=request.route_owner_ephemeral_public_key)
         signature = QuantumSign.sign(
-            skey=self._stack._layer4._this_static_secret_key,
-            msg=self._stack._layer4._this_identifier + request.route_token + kem_wrapped_key.encapsulated,
-            aad=connection.connection_token + connection.that_identifier)
+            skey=self._stack._layer4._self_static_skey,
+            msg=self._stack._layer4._self_id + request.route_token + kem_wrapped_key.encapsulated,
+            aad=connection.conn_tok + connection.peer_id)
         self._external_tunnel_keys[request.route_token] = kem_wrapped_key.decapsulated
 
         # Check if they are involved in maximum number of routes.
         if len(self._external_tunnel_keys) < 3:
             self._send_secure(connection, ConnectionRouteJoinAcceptResponse(
                 route_token=request.route_token,
-                acceptor_identifier=self._stack._layer4._this_identifier,
+                acceptor_identifier=self._stack._layer4._self_id,
                 kem_master_key=kem_wrapped_key.encapsulated,
                 signature=signature))
         else:
@@ -196,11 +196,11 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_connection_route_join_accept_response(self, request: ConnectionRouteJoinAcceptResponse) -> None:
-        metdata = request.request_metadata
+        metdata = request.meta
 
         # If this node isn't the route owner, tunnel the message backwards.
         if not self._route or request.route_token != self._route.route_token:
-            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.connection_token]]
+            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.conn_tok]]
             self._send_tunnel_backwards(connection, request)
 
         # Check the route token and candidate node are correct.
@@ -210,15 +210,15 @@ class Layer2(LayerN):
 
         # Verify the signature of the candidate node.
         if not QuantumSign.verify(
-                pkey=self._stack._layer4._cached_public_keys[request.acceptor_identifier],
+                pkey=self._stack._layer4._cached_pkeys[request.acceptor_identifier],
                 sig=request.signature,
-                aad=self._route.route_token + self._route.nodes[-1].that_identifier):
+                aad=self._route.route_token + self._route.nodes[-1].peer_id):
             self._logger.error("Invalid signature from candidate node.")
             return
 
         # Decapsulate the master key and store it.
         self._route.candidate_node.e2e_primary_key = QuantumKem.decapsulate(
-            secret_key=self._route.candidate_node.this_ephemeral_secret_key,
+            secret_key=self._route.candidate_node.self_ephemeral_skey,
             encapsulated=request.kem_master_key).decapsulated
         self._route.nodes.append(self._route.candidate_node)
 
@@ -227,11 +227,11 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_connection_route_join_reject_response(self, request: ConnectionRouteJoinRejectResponse) -> None:
-        metdata = request.request_metadata
+        metdata = request.meta
 
         # If this node isn't the route owner, tunnel the message backwards.
         if not self._route or request.route_token != self._route.route_token:
-            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.connection_token]]
+            connection = self._stack._layer4._conversations[self._route_reverse_token_map[metdata.conn_tok]]
             self._send_tunnel_backwards(connection, request)
 
         # Mark the candidate node as rejected, and the route builder will handle the circuit reset.
@@ -239,16 +239,16 @@ class Layer2(LayerN):
 
     @strict_isolation
     def _handle_tunnel_data_request(self, request: TunnelDataRequest) -> None:
-        metdata = request.request_metadata
+        metdata = request.meta
 
         # Get the connection object for this request.
-        connection = self._stack._layer4._conversations[metdata.connection_token]
+        connection = self._stack._layer4._conversations[metdata.conn_tok]
 
         # Client receive (remove all layers of encryption).
         if self._route and self._route.route_token == request.route_token:
             for route_node in self._route.nodes:
                 request.data = SymmetricEncryption.decrypt(data=request.data, key=route_node.e2e_primary_key)
-            self._handle_command(connection.that_address, connection.that_port, RawRequest.deserialize_to_json(request.data))
+            self._handle_command(connection.peer_ip, connection.peer_port, RawRequest.deserialize_to_json(request.data))
 
         # Tunnel a message backwards (add a layer of encryption).
         else:

@@ -19,7 +19,7 @@ class DirectoryServiceManager:
     def create_directory_profile(username: str) -> Bool:
         # Generate a static key pair and get the address of the current machine.
         static_key_pair = QuantumSign.generate_key_pair()
-        this_address = socket.getaddrinfo(socket.gethostname(), 0, socket.AF_INET6)[0][4][0]
+        address = socket.getaddrinfo(socket.gethostname(), 0, socket.AF_INET6)[0][4][0]
 
         # Check the current directory services for the name.
         with SafeFileOpen(DIRECTORY_SERVICE_PUBLIC_FILE, "rb") as file:
@@ -35,7 +35,7 @@ class DirectoryServiceManager:
             "name": username,
             "identifier": Hasher.hash(static_key_pair.public_key, HashAlgorithm.SHA3_256).hex(),
             "public_key": static_key_pair.public_key.hex(),
-            "address": this_address,
+            "address": address,
             "port": port}
 
         # Generate the private information for the directory service.

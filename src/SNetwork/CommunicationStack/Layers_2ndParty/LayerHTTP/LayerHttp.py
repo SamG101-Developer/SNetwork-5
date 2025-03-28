@@ -138,5 +138,5 @@ class LayerHTTP(LayerN):
         #         sockets.remove(sock)
         #         sock.close()
 
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: Json) -> None:
         ...

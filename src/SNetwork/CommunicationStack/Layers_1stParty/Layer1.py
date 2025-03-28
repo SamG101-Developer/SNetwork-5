@@ -25,8 +25,8 @@ class Layer1(LayerN):
         self._layer_application = application
         self._logger.info("Layer 1 Ready")
 
-    def _handle_command(self, address: IPv6Address, port: Int, data: Json) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: Json) -> None:
         ...
 
-    def _send(self, connection: Connection, request: RawRequest) -> None:
+    def _send(self, conn: Connection, req: RawRequest) -> None:
         ...
