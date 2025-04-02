@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
 from logging import Logger
-from socket import socket as Socket
 from typing import TYPE_CHECKING
 
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
+from SNetwork.Utils.Socket import Socket
 from SNetwork.Utils.Types import Bytes, Int, Optional, Tuple, Bool, Type, Str
 
 if TYPE_CHECKING:
@@ -37,8 +37,8 @@ class Connection:
         peer_id: The identifier of the remote node.
         conn_tok: The unique connection identifier.
         conn_state: The current state of the connection.
-        peer_ephemeral_pkey: The ephemeral public key of the remote node for this connection.
-        e2e_primary_key: The end-to-end primary key.
+        peer_epk: The ephemeral public key of the remote node for this connection.
+        e2e_key: The end-to-end primary key.
     """
 
     peer_ip: IPv6Address
@@ -46,21 +46,16 @@ class Connection:
     peer_id: Bytes
     conn_tok: Bytes
     conn_state: ConnectionState = field(default=ConnectionState.NotConnected)
-    peer_ephemeral_pkey: Optional[Bytes] = field(default=b"")
-    self_ephemeral_pkey: Optional[Bytes] = field(default=b"")
-    self_ephemeral_skey: Optional[Bytes] = field(default=b"")
-    e2e_primary_key: Optional[Bytes] = field(default=b"")
-    message_no: Int = field(default=0, init=False)
+    peer_epk: Optional[Bytes] = field(default=b"")
+    self_epk: Optional[Bytes] = field(default=b"")
+    self_esk: Optional[Bytes] = field(default=b"")
+    e2e_key: Optional[Bytes] = field(default=b"")
 
     def is_accepted(self) -> Bool:
         return self.conn_state == ConnectionState.ConnectionOpen
 
     def is_rejected(self) -> Bool:
         return self.conn_state == ConnectionState.ConnectionClosed
-
-    @property
-    def socket_address(self) -> Tuple[Str, Int]:
-        return self.peer_ip.exploded, self.peer_port
 
 
 class LayerNProtocol(Enum):
@@ -72,13 +67,13 @@ class LayerNProtocol(Enum):
 @dataclass(kw_only=True)
 class AbstractRequest:
     def serialize(self) -> Bytes:
-        # Serialize the fields, with "byte => .hex()" conversion.
+        # Serialize the fields.
         result = pickle.dumps(self)
         return result
 
     @staticmethod
     def deserialize[T: AbstractRequest](data: Bytes, to: Type[T] = None) -> T:
-        # Deserialize the fields, with ".hex() => byte" conversion.
+        # Deserialize the fields.
         result = pickle.loads(data)
         return result
 
@@ -88,24 +83,16 @@ class AbstractRequest:
 
 @dataclass(kw_only=True)
 class RawRequest(AbstractRequest):
-    meta: RequestMetadata = None
+    conn_tok: Bytes = b""
+    proto: LayerNProtocol = None
     secure: Bool = False
 
 
 @dataclass(kw_only=True)
 class EncryptedRequest(AbstractRequest):
     conn_tok: Bytes
-    ciphertext: Bytes
+    ciphertext: Bytes  # An encrypted serialized request
     secure: Bool = True
-
-
-@dataclass(kw_only=True)
-class RequestMetadata:
-    conn_tok: Bytes
-    sender_id: Bytes
-    stack_layer: Str
-    proto: LayerNProtocol
-    message_no: Int
 
 
 class LayerN:
@@ -156,13 +143,13 @@ class LayerN:
         """
 
         # Add the connection token, and send the unencrypted data to the address.
-        req = self._prep_data(conn, req)
+        self.attach_metadata(conn, req)
         serialized = req.serialize()
 
         self._logger.debug(
-            f"-> Sending raw '{req.meta.proto}' ({len(serialized)}-byte) request to "
+            f"-> Sending raw '{req.proto}' ({len(serialized)}-byte) request to "
             f"{conn.peer_id.hex()}@{conn.peer_ip}:{conn.peer_port}")
-        self._socket.sendto(serialized, conn.socket_address)
+        self._socket.sendto(serialized, conn.peer_ip, conn.peer_port)
 
     @strict_isolation
     def _send_secure(self, conn: Connection, req: RawRequest) -> None:
@@ -171,8 +158,7 @@ class LayerN:
         the single recv function to know whether decryption is necessary or not.
         """
 
-        req = self._prep_data(conn, req)
-        proto = req.meta.proto
+        self.attach_metadata(conn, req)
         serialized = req.serialize()
 
         # Queue the request until the connection is accepted.
@@ -182,26 +168,14 @@ class LayerN:
         # Create the ciphertext using the correct primary key from the connection.
         ciphertext = SymmetricEncryption.encrypt(
             data=serialized,
-            key=self._stack._layer4._conversations[conn.conn_tok].e2e_primary_key)
+            key=self._stack._layer4._conversations[conn.conn_tok].e2e_key)
 
         # Form an encrypted request and send it to the address.
         serialized = EncryptedRequest(conn_tok=conn.conn_tok, ciphertext=ciphertext).serialize()
 
-        self._logger.debug(f"-> Sending encrypted '{proto.name}' request to {conn.peer_id.hex()}")
-        self._socket.sendto(serialized, conn.socket_address)
+        self._logger.debug(f"-> Sending encrypted request to {conn.peer_id.hex()}")
+        self._socket.sendto(serialized, conn.peer_ip, conn.peer_port)
 
-    def _prep_data(self, conn: Connection, req: RawRequest) -> RawRequest:
-        """
-        This method is used to prepare the data to be sent to a connection. The data has the connection stored under the
-        "token" key, and a random message ID added to, for re-sending malformed messages. The data is then dumped to
-        JSON, and converted to bytes and returned.
-        """
-
-        conn.message_no += 1
-        req.meta = RequestMetadata(
-            conn_tok=conn.conn_tok,
-            sender_id=conn.peer_id,
-            stack_layer=type(self).__name__[-1],
-            proto=self._proto[type(req).__name__],
-            message_no=conn.message_no)
-        return req
+    def attach_metadata(self, conn: Connection, req: RawRequest) -> None:
+        req.conn_tok = conn.conn_tok
+        req.proto = self._proto.__members__.get(type(req).__name__, None)
