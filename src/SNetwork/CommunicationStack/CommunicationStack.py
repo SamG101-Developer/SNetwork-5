@@ -29,6 +29,7 @@ class CommunicationStack:
     _layer2: Optional[Layer2]
     _layer3: Optional[Layer3]
     _layer4: Optional[Layer4]
+    _layerD: Optional[LayerD]
 
     _port: Int
     _listen_thread: Thread
