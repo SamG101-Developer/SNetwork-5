@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from enum import Enum
 from ipaddress import IPv6Address
-from socket import socket as Socket
 from typing import TYPE_CHECKING
 
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, LayerNProtocol, RawRequest
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
+from SNetwork.Utils.Socket import Socket
 from SNetwork.Utils.Types import Json, Int
 
 if TYPE_CHECKING:
