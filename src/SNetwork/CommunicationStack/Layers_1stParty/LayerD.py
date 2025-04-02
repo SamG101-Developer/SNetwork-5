@@ -5,12 +5,11 @@ import random
 from dataclasses import dataclass
 from enum import Enum
 from ipaddress import IPv6Address
-from socket import socket as Socket
 from threading import Thread
 from typing import TYPE_CHECKING
 
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, RawRequest
-from SNetwork.Config import PROFILE_CACHE
+from SNetwork.Config import PROFILE_CACHE, DIRECTORY_SERVICE_NODE_CACHE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
 from SNetwork.Managers.KeyManager import KeyStoreData
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
@@ -18,7 +17,8 @@ from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
 from SNetwork.QuantumCrypto.QuantumSign import SignedMessagePair, QuantumSign
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
-from SNetwork.Utils.Types import Bool, Optional, Bytes, Int, Tuple, List, Dict
+from SNetwork.Utils.Socket import Socket
+from SNetwork.Utils.Types import Optional, Bytes, Int, Tuple, List, Dict, Str
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -53,13 +53,14 @@ class LayerD(LayerN):
 
     _self_id: Optional[Bytes]
     _self_cert: Optional[X509Certificate]
-    _is_directory_service: Bool
+    _is_directory_service: Str
     _directory_service_static_key_pair: Optional[AsymmetricKeyPair]
     _directory_service_temp_map: Dict[Tuple[IPv6Address, Int], Bytes]
     _node_cache: List[Tuple[IPv6Address, Int, Bytes]]
+    _node_cache_file: str
 
     def __init__(
-            self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, is_directory_service: Bool,
+            self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, is_directory_service: Str,
             identifier: Bytes, certificate: X509Certificate,
             directory_service_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
 
@@ -72,9 +73,23 @@ class LayerD(LayerN):
         self._directory_service_static_key_pair = directory_service_static_key_pair
         self._directory_service_temp_map = {}
         self._node_cache = []
+        self._node_cache_file = (
+            PROFILE_CACHE % node_info.hashed_username.hex() if not is_directory_service else
+            DIRECTORY_SERVICE_NODE_CACHE % self._is_directory_service)
+
+        self._load_cache_from_file()
 
         # Start listening on the socket for this layer.
         self._logger.info("Layer D Ready")
+
+    def _load_cache_from_file(self) -> None:
+        # Load the cache from the file.
+        with SafeFileOpen(self._node_cache_file, "r") as file:
+            current_cache = json.load(file)
+
+        # Convert the cache to a list of tuples.
+        self._node_cache = [(IPv6Address(bytes.fromhex(node[0])), node[1], bytes.fromhex(node[2])) for node in current_cache.values()]
+        self._node_cache = list(set(self._node_cache))
 
     def request_bootstrap(self) -> None:
         exclude = []
@@ -97,7 +112,7 @@ class LayerD(LayerN):
 
     def _handle_bootstrap_request(self, peer_ip: IPv6Address, peer_port: Int, req: BootstrapRequest) -> None:
         # Extract the metadata from the request.
-        conn = self._stack._layer4._conversations[req.meta.conn_tok]
+        conn = self._stack._layer4._conversations[req.conn_tok]
 
         # Cache this node and its associated information.
         self._node_cache.append((peer_ip, peer_port, req.identifier))
@@ -118,18 +133,18 @@ class LayerD(LayerN):
         self._node_cache.extend(request.node_info)
         self._logger.info(f"Extended node cache with {len(request.node_info)} nodes.")
 
-        with SafeFileOpen(PROFILE_CACHE % self._self_node_info.hashed_username.hex(), "r") as file:
+        with SafeFileOpen(self._node_cache_file, "r") as file:
             current_cache = json.load(file)
 
         # Write the nodes to the cache.
-        with SafeFileOpen(PROFILE_CACHE % self._self_node_info.hashed_username.hex(), "w") as file:
+        with SafeFileOpen(self._node_cache_file, "w") as file:
             current_cache |= {node_info[2].hex(): [node_info[0].packed.hex(), node_info[1], node_info[2].hex()] for node_info in request.node_info}
             json.dump(current_cache, file, indent=4)
 
     def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, request: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
 
-        match request.meta.proto:
+        match request.proto:
             # Directory service will handle a bootstrap request.
             case LayerDProtocol.BootstrapRequest if self._is_directory_service:
                 thread = Thread(target=self._handle_bootstrap_request, args=(peer_ip, peer_port, request))
@@ -142,4 +157,4 @@ class LayerD(LayerN):
 
             # Default case
             case _:
-                self._logger.error(f"Invalid request received: {request.meta.proto}")
+                self._logger.error(f"Invalid request received: {request.proto}")
