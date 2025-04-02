@@ -2,11 +2,12 @@ import glob
 import json
 import os
 import subprocess
+import time
 from threading import Thread, Lock
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QMouseEvent
-from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QDialog, QApplication
+from PyQt6.QtWidgets import QWidget, QGridLayout, QScrollArea, QVBoxLayout, QLabel, QDialog, QApplication, QPushButton
 
 from SNetwork.Config import DIRECTORY_SERVICE_PRIVATE_FILE, DIRECTORY_SERVICE_PUBLIC_FILE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
@@ -63,6 +64,7 @@ class LogMessageScroller(QScrollArea):
 
         # Connect the signal to the display.
         self._log_message_recv.connect(self._log_message_display.add_new_log_message)
+        self._log_message_recv.connect(self._scroll_bottom)
 
         if not is_dir:
             self._program_thread = Thread(target=self.run_node_process)
@@ -70,6 +72,16 @@ class LogMessageScroller(QScrollArea):
         else:
             self._program_thread = Thread(target=self.run_dir_process)
             self._program_thread.start()
+
+    def _scroll_bottom(self) -> None:
+        # Scroll to the bottom of the log messages.
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+
+    def _save_to_file(self) -> None:
+        # Concatenate all log messages into a single string.
+        all_messages = "\n".join(self._log_message_display._messages)
+        with open(f"tmp/log-{time.time()}.txt", "w") as file:
+            file.write(all_messages)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         # Bring text up in an expanded dialog (bigger font, more readable)
@@ -90,7 +102,13 @@ class LogMessageScroller(QScrollArea):
             log_message = self._log_message_display.nth_message(i)
             scroller.widget().add_new_log_message(log_message)
 
+        save_to_file_button = QPushButton("Save to file")
+        save_to_file_button.clicked.connect(self._save_to_file)
+        save_to_file_button.clicked.connect(lambda: dialog.close())
+        save_to_file_button.setFixedSize(100, 30)
+
         dialog.layout().addWidget(scroller)
+        dialog.layout().addWidget(save_to_file_button, alignment=Qt.AlignmentFlag.AlignCenter)
         dialog.show()
 
     def run_node_process(self) -> None:
@@ -172,14 +190,19 @@ def create_nodes(n: int, offset: int = 0) -> None:
     for i in range(offset, n + offset):
         username, password = (f"username_{i}", "pass")
         ProfileManager.create_profile(username, password)
-        command = f".venv/Scripts/python main.py profile create --name {username} --pass {password}"
-        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def delete_nodes(n: int, offset: int = 0) -> None:
+    for i in range(offset, n + offset):
+        username, password = (f"username_{i}", "pass")
+        ProfileManager.delete_profile(username, password)
 
 
 if __name__ == "__main__":
     import sys
 
     sys.excepthook = lambda e, v, t: sys.__excepthook__(e, v, t)
+    # delete_nodes(NODE_COUNT)
     # create_directory_services()
     # create_nodes(NODE_COUNT)
     app = QApplication(sys.argv)
