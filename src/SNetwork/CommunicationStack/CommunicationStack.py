@@ -73,7 +73,7 @@ class CommunicationStack:
     def _listen(self) -> None:
         # Listen for incoming raw requests, and handle them in a new thread.
         while True:
-            data, ip, port = self._socket.recvfrom(20_000)
+            data, ip, port = self._socket.recvfrom(24_000)
 
             try:
                 response = AbstractRequest.deserialize(data)
