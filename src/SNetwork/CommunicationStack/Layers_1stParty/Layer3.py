@@ -1,18 +1,22 @@
 from __future__ import annotations
+
+import math
+import operator
+import random
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from ipaddress import IPv6Address
-from socket import socket as Socket
 from threading import Lock, Thread
 from typing import TYPE_CHECKING
-import math, operator, random, time
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, RawRequest
 from SNetwork.CommunicationStack.Isolation import strict_isolation
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, RawRequest
 from SNetwork.Config import DHT_STORE_PATH, DHT_ALPHA, DHT_K_VALUE, DHT_KEY_LENGTH
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.Utils.Files import SafeFileOpen
 from SNetwork.Utils.Logger import LoggerHandlers, isolated_logger
+from SNetwork.Utils.Socket import Socket
 from SNetwork.Utils.Types import Bool, Dict, Int, Json, Bytes, List, Optional, Tuple, Float, Str
 
 if TYPE_CHECKING:

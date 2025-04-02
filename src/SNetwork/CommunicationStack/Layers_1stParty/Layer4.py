@@ -4,7 +4,6 @@ import secrets
 from dataclasses import dataclass
 from enum import Enum
 from ipaddress import IPv6Address
-from socket import socket as Socket
 from threading import Thread
 from typing import TYPE_CHECKING
 
@@ -18,6 +17,7 @@ from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
 from SNetwork.QuantumCrypto.QuantumSign import QuantumSign, SignedMessagePair
 from SNetwork.QuantumCrypto.Timestamp import Timestamp
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
+from SNetwork.Utils.Socket import Socket
 
 if TYPE_CHECKING:
     from SNetwork.Utils.Types import Bytes, Optional, Dict, Int, Str
@@ -31,30 +31,6 @@ class Layer4Protocol(LayerNProtocol, Enum):
     ConnectionAck = 0x03
     ConnectionClose = 0x04
     ConnectionData = 0x05
-
-
-@dataclass(kw_only=True)
-class ConnectionRequest(RawRequest):
-    requester_cert: X509Certificate
-    requester_ephemeral_pkey: Bytes
-    sig: SignedMessagePair
-
-
-@dataclass(kw_only=True)
-class ConnectionAccept(RawRequest):
-    acceptor_cert: X509Certificate
-    kem_wrapped_e2e_primary_key: Bytes
-    sig: SignedMessagePair
-
-
-@dataclass(kw_only=True)
-class ConnectionAck(RawRequest):
-    sig: SignedMessagePair
-
-
-@dataclass(kw_only=True)
-class ConnectionClose(RawRequest):
-    reason: Str
 
 
 class Layer4(LayerN):
@@ -82,6 +58,26 @@ class Layer4(LayerN):
     _cached_certs: Dict[Bytes, X509Certificate]
     _cached_pkeys: Dict[Bytes, Bytes]
 
+    @dataclass(kw_only=True)
+    class ConnectionRequest(RawRequest):
+        requester_cert: X509Certificate
+        requester_epk: Bytes
+        sig: SignedMessagePair
+
+    @dataclass(kw_only=True)
+    class ConnectionAccept(RawRequest):
+        acceptor_cert: X509Certificate
+        kem_wrapped_p2p_primary_key: Bytes
+        sig: SignedMessagePair
+
+    @dataclass(kw_only=True)
+    class ConnectionAck(RawRequest):
+        sig: SignedMessagePair
+
+    @dataclass(kw_only=True)
+    class ConnectionClose(RawRequest):
+        reason: Str
+
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
         super().__init__(stack, node_info, Layer4Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
 
@@ -97,7 +93,7 @@ class Layer4(LayerN):
         self._logger.info("Layer 4 Ready")
 
     @cross_isolation(4)
-    def connect(self, peer_ip: IPv6Address, peer_port: Int, peer_id: Bytes) -> Optional[Connection]:
+    def connect(self, peer_ip: IPv6Address, peer_port: Int, peer_id: Bytes, conn_tok: Bytes = b"") -> Optional[Connection]:
         """
         The "connect" method is called to create a UDP connection to another node in the network. This method handles
         the handshake, and authenticates and encrypts the connection. If the connection is accepted, a Connection object
@@ -106,27 +102,28 @@ class Layer4(LayerN):
 
         # Generate a unique connection token for this connection.
         # Todo: Make a combination of this and that identifier, hashed? provides a linkage then
-        conn_tok = secrets.token_bytes(32) + Timestamp.generate_time_stamp()
+        conn_tok = (conn_tok or secrets.token_bytes(32)) + Timestamp.generate_time_stamp()
+        remote_session_id = conn_tok + peer_id
 
         # Generate an ephemeral public key pair for this connection exclusively + sign.
         self_ephemeral_key_pair = QuantumKem.generate_key_pair()
         self_ephemeral_pkey_sig = QuantumSign.sign(
             skey=self._self_static_skey,
             msg=self_ephemeral_key_pair.public_key,
-            aad=conn_tok + peer_id)
+            aad=remote_session_id)
 
         # Create the Connection object to track the conversation.
         conn = Connection(
             peer_ip=peer_ip, peer_port=peer_port, peer_id=peer_id,
-            self_ephemeral_pkey=self_ephemeral_key_pair.public_key,
-            self_ephemeral_skey=self_ephemeral_key_pair.secret_key,
+            self_epk=self_ephemeral_key_pair.public_key,
+            self_esk=self_ephemeral_key_pair.secret_key,
             conn_tok=conn_tok, conn_state=ConnectionState.PendingConnection)
         self._conversations[conn.conn_tok] = conn
 
         # Create the JSON request to request a connection. Include the certificate and signed ephemeral public key.
-        self._send(conn, ConnectionRequest(
+        self._send(conn, Layer4.ConnectionRequest(
             requester_cert=self._self_cert,
-            requester_ephemeral_pkey=self_ephemeral_key_pair.public_key,
+            requester_epk=self_ephemeral_key_pair.public_key,
             sig=self_ephemeral_pkey_sig))
 
         # Wait for the connection to be accepted, rejected or closed, and return a value accordingly.
@@ -139,11 +136,11 @@ class Layer4(LayerN):
         # Deserialize the request and call the appropriate handler.
 
         # Get the token and state of the conversion for that token.
-        token = req.meta.conn_tok
+        token = req.conn_tok
         state = self._conversations[token].conn_state if token in self._conversations else ConnectionState.NotConnected
 
         # Match the command to the appropriate handler.
-        match req.meta.proto:
+        match req.proto:
 
             # Handle a request to establish a connection from a non-connected token.
             case Layer4Protocol.ConnectionRequest if state == ConnectionState.NotConnected:
@@ -168,15 +165,15 @@ class Layer4(LayerN):
             # Handle either an invalid command from a connected token, or an invalid command/state combination.
             case _:
                 self._logger.warning(f"Received invalid command from token {token}.")
-                self._logger.debug(f"State: {state}")
+                self._logger.warning(f"State: {state}")
 
     def _handle_connection_request(self, peer_ip: IPv6Address, peer_port: Int, req: ConnectionRequest) -> None:
         # Create the Connection object to track the conversation.
         conn = Connection(
             peer_ip=peer_ip, peer_port=peer_port,
             peer_id=req.requester_cert.tbs_certificate.subject["common_name"],
-            conn_tok=req.meta.conn_tok, conn_state=ConnectionState.PendingConnection,
-            peer_ephemeral_pkey=req.requester_ephemeral_pkey)
+            conn_tok=req.conn_tok, conn_state=ConnectionState.PendingConnection,
+            peer_epk=req.requester_epk)
 
         # Create the local and remote session identifiers.
         local_session_id  = conn.conn_tok + self._self_id
@@ -185,17 +182,17 @@ class Layer4(LayerN):
 
         # Verify the certificate of the remote node.
         if not QuantumSign.verify(pkey=peer_static_pkey, sig=req.requester_cert.signature_value, aad=conn.peer_id, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
-            self._send(conn, ConnectionClose(reason="Invalid certificate."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid certificate."))
             return
 
         # Verify the signature of the ephemeral public key.
         if not QuantumSign.verify(pkey=peer_static_pkey, sig=req.sig, aad=local_session_id):
-            self._send(conn, ConnectionClose(reason="Invalid signature on ephemeral public key."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid signature on ephemeral public key."))
             return
 
         # Validate the connection token's timestamp is within the tolerance.
         if not Timestamp.check_time_stamp(conn.conn_tok[-8:]):
-            self._send(conn, ConnectionClose(reason="Invalid connection token timestamp."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid connection token timestamp."))
             return
 
         # Cache the public key and certificate of the remote node.
@@ -203,24 +200,24 @@ class Layer4(LayerN):
         self._cached_certs[conn.peer_id] = req.requester_cert
 
         # Create a master key and kem-wrapped master key.
-        kem = QuantumKem.encapsulate(public_key=req.requester_ephemeral_pkey)
+        kem = QuantumKem.encapsulate(public_key=req.requester_epk)
         kem_sig = QuantumSign.sign(skey=self._self_static_skey, msg=kem.encapsulated, aad=remote_session_id)
-        conn.e2e_primary_key = kem.decapsulated
+        conn.e2e_key = kem.decapsulated
 
         # Create a new request responding to the handshake request.
-        self._send(conn, ConnectionAccept(
+        self._send(conn, Layer4.ConnectionAccept(
             acceptor_cert=self._self_cert,
-            kem_wrapped_e2e_primary_key=kem.encapsulated,
+            kem_wrapped_p2p_primary_key=kem.encapsulated,
             sig=kem_sig))
 
         # Clean up the connection object and mark it as pending.
-        del conn.peer_ephemeral_pkey
+        del conn.peer_epk
         conn.conn_state = ConnectionState.PendingConnection
         self._conversations[conn.conn_tok] = conn
 
     def _handle_connection_accept(self, req: ConnectionAccept) -> None:
         # Get the connection object for this request.
-        conn = self._conversations[req.meta.conn_tok]
+        conn = self._conversations[req.conn_tok]
 
         # Create the local and remote session identifiers.
         local_session_id = conn.conn_tok + self._self_id
@@ -229,12 +226,12 @@ class Layer4(LayerN):
 
         # Verify the certificate of the remote node.
         if not QuantumSign.verify(pkey=peer_static_pkey, sig=req.acceptor_cert.signature_value, aad=conn.peer_id, tolerance=TOLERANCE_CERTIFICATE_SIGNATURE):
-            self._send(conn, ConnectionClose(reason="Invalid certificate."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid certificate."))
             return
 
         # Verify the signature of the kem encapsulation.
         if not QuantumSign.verify(pkey=peer_static_pkey, sig=req.sig, aad=local_session_id):
-            self._send(conn, ConnectionClose(reason="Invalid signature on kem wrapped key."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid signature on kem wrapped key."))
             return
 
         # Cache the public key and certificate of the remote node.
@@ -242,26 +239,23 @@ class Layer4(LayerN):
         self._cached_pkeys[conn.peer_id] = peer_static_pkey
 
         # Unwrap the master key and store it in the connection object.
-        kem = QuantumKem.decapsulate(
-            secret_key=conn.self_ephemeral_skey,
-            encapsulated=req.kem_wrapped_e2e_primary_key)
-        conn.e2e_primary_key = kem.decapsulated
+        kem = QuantumKem.decapsulate(secret_key=conn.self_esk, encapsulated=req.kem_wrapped_p2p_primary_key)
+        conn.e2e_key = kem.decapsulated
 
         # Send the ACK back to the other node, containing a signature of the master key.
-        hash_e2e_primary_key = Hasher.hash(data=conn.e2e_primary_key, algorithm=HashAlgorithm.SHA3_256)
+        hash_e2e_primary_key = Hasher.hash(data=conn.e2e_key, algorithm=HashAlgorithm.SHA3_256)
         hash_e2e_primary_key_sig = QuantumSign.sign(skey=self._self_static_skey, msg=hash_e2e_primary_key, aad=remote_session_id)
-        self._send(conn, ConnectionAck(sig=hash_e2e_primary_key_sig))
+        self._send(conn, Layer4.ConnectionAck(sig=hash_e2e_primary_key_sig))
 
         # Clean up the connection object and mark it as open.
-        del conn.self_ephemeral_skey
-        del conn.self_ephemeral_pkey
+        del conn.self_esk
+        del conn.self_epk
         conn.conn_state = ConnectionState.ConnectionOpen
         self._logger.info(f"Connection established with {conn.peer_id.hex()}.")
 
     def _handle_connection_ack(self, req: ConnectionAck) -> None:
         # Get the connection object for this request.
-        meta = req.meta
-        conn = self._conversations[meta.conn_tok]
+        conn = self._conversations[req.conn_tok]
 
         # Create the local and remote session identifiers.
         local_session_id = conn.conn_tok + self._self_id
@@ -269,9 +263,9 @@ class Layer4(LayerN):
         self_static_pkey = self._cached_pkeys[conn.peer_id]
 
         # Verify the signature of the master key.
-        hash_e2e_primary_key = Hasher.hash(data=conn.e2e_primary_key, algorithm=HashAlgorithm.SHA3_256)
+        hash_e2e_primary_key = Hasher.hash(data=conn.e2e_key, algorithm=HashAlgorithm.SHA3_256)
         if not QuantumSign.verify(pkey=self_static_pkey, sig=req.sig, raw=hash_e2e_primary_key, aad=local_session_id):
-            self._send(conn, ConnectionClose(reason="Invalid signature on master key."))
+            self._send(conn, Layer4.ConnectionClose(reason="Invalid signature on master key."))
             return
 
         # Clean up the connection object and mark it as open.
@@ -280,9 +274,9 @@ class Layer4(LayerN):
 
     def _handle_connection_close(self, req: ConnectionClose) -> None:
         # Get the connection object for this request.
-        conn = self._conversations[req.meta.conn_tok]
+        conn = self._conversations[req.conn_tok]
         self._logger.info(f"Connection closed: {req.reason}")
 
         # Clean up the connection object and mark it as closed.
         conn.conn_state = ConnectionState.ConnectionClosed
-        del self._conversations[req.meta.conn_tok]
+        del self._conversations[req.conn_tok]
