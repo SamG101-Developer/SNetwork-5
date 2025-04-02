@@ -6,7 +6,7 @@ import keyring
 from keyrings.alt.file import PlaintextKeyring
 
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
-from SNetwork.Utils.Types import Bytes, Bool, Optional
+from SNetwork.Utils.Types import Bytes, Bool, Optional, Int
 from SNetwork.Config import KEY_STORE_NAME
 
 
@@ -22,6 +22,7 @@ class KeyStoreData:
     certificate: Optional[X509Certificate]
     hashed_username: Bytes
     hashed_password: Bytes
+    port: Int
 
 
 class KeyManager:

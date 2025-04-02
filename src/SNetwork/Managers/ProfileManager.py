@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from SNetwork.Config import PROFILE_FILE, TESTING_PORT_ADJUST, PROFILE_CACHE
+from SNetwork.Config import PROFILE_FILE, PROFILE_CACHE
 from SNetwork.Managers.KeyManager import KeyStoreData, KeyManager
 from SNetwork.QuantumCrypto.Certificate import X509
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
@@ -46,7 +46,7 @@ class ProfileManager:
         # Key and certificate information, ands et information into the keyring.
         static_key_pair = QuantumSign.generate_key_pair()
         identifier = Hasher.hash(static_key_pair.public_key, HashAlgorithm.SHA3_256)
-        ProfileManager._generate_profile_certificate(hashed_username, hashed_password, identifier, static_key_pair)
+        ProfileManager._generate_profile_certificate(hashed_username, hashed_password, identifier, static_key_pair, port)
 
     @staticmethod
     def delete_profile(username: Str, password: Str) -> None:
@@ -86,7 +86,7 @@ class ProfileManager:
                 json.dump({}, file)
 
         # Return the hashed username and port.
-        return hashed_username, hashed_password, current_profiles[username]["port"] + TESTING_PORT_ADJUST
+        return hashed_username, hashed_password, current_profiles[username]["port"]
 
     @staticmethod
     def list_usernames_formatted() -> List[Str]:
@@ -96,8 +96,8 @@ class ProfileManager:
 
     @staticmethod
     def _generate_profile_certificate(
-            hashed_username: Bytes, hashed_password: Bytes, identifier: Bytes,
-            static_key_pair: AsymmetricKeyPair) -> None:
+            hashed_username: Bytes, hashed_password: Bytes, identifier: Bytes, static_key_pair: AsymmetricKeyPair,
+            port: Int) -> None:
 
         # Generate the certificate signing request.
         certificate_signing_request = X509.generate_certificate_signing_request(
@@ -120,7 +120,8 @@ class ProfileManager:
             public_key=static_key_pair.public_key,
             certificate=certificate,
             hashed_username=hashed_username,
-            hashed_password=hashed_password))
+            hashed_password=hashed_password,
+            port=port))
 
     @staticmethod
     def _load_current_profiles() -> Dict:

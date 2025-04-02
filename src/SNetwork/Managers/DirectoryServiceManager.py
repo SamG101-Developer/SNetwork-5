@@ -5,7 +5,7 @@ import random
 import socket
 from ipaddress import IPv6Address
 
-from SNetwork.Config import DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, TESTING_PORT_ADJUST
+from SNetwork.Config import DIRECTORY_SERVICE_PUBLIC_FILE, DIRECTORY_SERVICE_PRIVATE_FILE, DIRECTORY_SERVICE_NODE_CACHE
 from SNetwork.Managers.ProfileManager import ProfileManager
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
 from SNetwork.QuantumCrypto.Keys import AsymmetricKeyPair
@@ -27,7 +27,7 @@ class DirectoryServiceManager:
         if username in directory_services: return False
 
         # Get the next available port from the current directory services.
-        ports = [int(directory_service["port"]) for directory_service in directory_services.values()] or [50000]
+        ports = [int(directory_service["port"]) for directory_service in directory_services.values()] or [30000]
         port = min(set(range(min(ports), max(ports) + 2)) - set(ports))
 
         # Generate the public information for the directory service.
@@ -48,6 +48,8 @@ class DirectoryServiceManager:
             json.dump(directory_services, file)
         with SafeFileOpen(DIRECTORY_SERVICE_PRIVATE_FILE % username, "w") as file:
             json.dump(private_directory_service_entry, file, indent=4)
+        with SafeFileOpen(DIRECTORY_SERVICE_NODE_CACHE % username, "w") as file:
+            json.dump({}, file)
 
         # Make DIRECTORY_SERVICE_PRIVATE_FILE % name readonly with 0o400 permissions.
         path = pathlib.Path(DIRECTORY_SERVICE_PRIVATE_FILE % username)
@@ -56,7 +58,7 @@ class DirectoryServiceManager:
         # Key and certificate information, ands et information into the keyring.
         identifier = Hasher.hash(static_key_pair.public_key, HashAlgorithm.SHA3_256)
         hashed_username, hashed_password, *_ = DirectoryServiceManager.validate_directory_profile(username)
-        ProfileManager._generate_profile_certificate(hashed_username, hashed_password, identifier, static_key_pair)
+        ProfileManager._generate_profile_certificate(hashed_username, hashed_password, identifier, static_key_pair, port)
         return True
 
     @staticmethod
@@ -68,7 +70,7 @@ class DirectoryServiceManager:
         # Choose a random directory service to connect to.
         name = random.choice([k for k in directory_services.keys() if k not in (exclude or [])])
         entry = directory_services[name]
-        return name, IPv6Address(entry["address"]), entry["port"] + TESTING_PORT_ADJUST, bytes.fromhex(entry["identifier"]), bytes.fromhex(entry["public_key"])
+        return name, IPv6Address(entry["address"]), entry["port"], bytes.fromhex(entry["identifier"]), bytes.fromhex(entry["public_key"])
 
     @staticmethod
     def validate_directory_profile(username: Str) -> Optional[Tuple[Bytes, Bytes, Int, Bytes, AsymmetricKeyPair]]:
@@ -80,6 +82,9 @@ class DirectoryServiceManager:
         # Check if the username exists.
         if not os.path.exists(DIRECTORY_SERVICE_PRIVATE_FILE % username):
             return None
+        if not os.path.exists(DIRECTORY_SERVICE_NODE_CACHE % username):
+            with SafeFileOpen(DIRECTORY_SERVICE_NODE_CACHE % username, "w") as file:
+                json.dump({}, file)
 
         # Load the keys
         with SafeFileOpen(DIRECTORY_SERVICE_PRIVATE_FILE % username, "rb") as file:
@@ -91,7 +96,7 @@ class DirectoryServiceManager:
 
         # Return the hashed username and port.
         return (
-            hashed_username, hashed_password, current_profiles[username]["port"] + TESTING_PORT_ADJUST, identifier,
+            hashed_username, hashed_password, current_profiles[username]["port"], identifier,
             static_key_pair)
 
     @staticmethod
