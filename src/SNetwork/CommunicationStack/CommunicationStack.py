@@ -82,6 +82,8 @@ class CommunicationStack:
                 self._logger.warning(f"Received invalid response from {ip}:{port}.")
                 continue
 
+            tunnelled_response = None
+
             # Handle secure p2p requests.
             if response.secure:
                 token, encrypted_data = response.conn_tok, response.ciphertext
@@ -95,8 +97,7 @@ class CommunicationStack:
                     # If the response is still encrypted, it is a tunnel request.
                     if isinstance(response, EncryptedRequest):
                         self._logger.debug(f"Received tunnelled encrypted request from {ip}:{port}.")
-                        self._logger.debug(f"{response.conn_tok.hex()}")
-                        self._logger.debug(f"{self._layer2._participating_route_keys}")
+                        tunnelled_response = response
                         e2e_key = self._layer2._participating_route_keys[response.conn_tok]
                         decrypted_data = SymmetricEncryption.decrypt(data=response.ciphertext, key=e2e_key)
                         response = pickle.loads(decrypted_data)
@@ -115,7 +116,10 @@ class CommunicationStack:
                 continue
 
             layer = [x for x in self._layers if hasattr(x, f"_handle_{caseconverter.snakecase(response.proto.name)}")][0]
-            Thread(target=layer._handle_command, args=(ip, port, response)).start()
+            if tunnelled_response is None:
+                Thread(target=layer._handle_command, args=(ip, port, response)).start()
+            else:
+                Thread(target=layer._handle_command, args=(ip, port, response, tunnelled_response)).start()
 
 
 __all__ = ["CommunicationStack"]

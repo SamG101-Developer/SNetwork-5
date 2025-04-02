@@ -116,6 +116,7 @@ class Layer2(LayerN):
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
         super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_2))
 
+        self._my_route = None
         self._route_forward_token_map = {}
         self._route_reverse_token_map = {}
         self._participating_route_keys = {}
@@ -177,7 +178,9 @@ class Layer2(LayerN):
                 self._logger.info(f"Candidate node {candidate_node.peer_id.hex()} joined the route.")
                 self._my_route.nodes.append(candidate_node)
 
-    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest) -> None:
+        self._logger.info("Route created successfully.")
+
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest, tun_req: Optional[EncryptedRequest] = None) -> None:
         # Deserialize the request and call the appropriate handler.
 
         # Get the token and state of the conversion for that token.
@@ -188,7 +191,7 @@ class Layer2(LayerN):
 
             # Handle a request to extend a route in the network.
             case Layer2Protocol.RouteExtensionRequest:
-                thread = Thread(target=self._handle_route_extension_request, args=(peer_ip, peer_port, req))
+                thread = Thread(target=self._handle_route_extension_request, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to join a tunnel.
@@ -208,7 +211,7 @@ class Layer2(LayerN):
 
             # Handle a request to forward data through a tunnel.
             case Layer2Protocol.TunnelDataForward:
-                thread = Thread(target=self._handle_tunnel_data_forward, args=(peer_ip, peer_port, req))
+                thread = Thread(target=self._handle_tunnel_data_forward, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to backward data through a tunnel.
@@ -220,12 +223,12 @@ class Layer2(LayerN):
             case _:
                 self._logger.warning(f"Received invalid command from token {token}.")
 
-    def _handle_route_extension_request(self, peer_ip: IPv6Address, peer_port: Int, req: RouteExtensionRequest) -> None:
+    def _handle_route_extension_request(self, peer_ip: IPv6Address, peer_port: Int, req: RouteExtensionRequest, tun_req: EncryptedRequest) -> None:
         self._logger.info(f"Received route extension request from {peer_ip}:{peer_port}")
         self._logger.info(f"Sending route extension request to {req.next_node_ip}:{req.next_node_port}")
 
         # Create a new connection to the next node, specified by the request.
-        prev_conn = self._stack._layer4._conversations[req.conn_tok]
+        prev_conn = self._stack._layer4._conversations[tun_req.conn_tok]
         next_conn = self._stack._layer4.connect(req.next_node_ip, req.next_node_port, req.next_node_id, conn_tok=req.route_tok)
 
         # If the connection cannot be made, reject the request.
@@ -259,7 +262,7 @@ class Layer2(LayerN):
         # Create a master key and kem-wrapped master key.
         kem = QuantumKem.encapsulate(public_key=req.route_owner_epk)
         kem_sig = QuantumSign.sign(skey=self._stack._layer4._self_static_skey, msg=kem.encapsulated, aad=remote_session_id)
-        self._participating_route_keys[req.route_token] = kem.decapsulated
+        self._participating_route_keys[req.conn_tok] = kem.decapsulated  # use conn_tok so prev_node maps to route tunnel key instantly.
 
         # Create a new request responding to the handshake request.
         self._logger.info(f"Sending tunnel join accept to {peer_ip}:{peer_port}")
@@ -315,7 +318,7 @@ class Layer2(LayerN):
         self._logger.info(f"Node {req.conn_tok.hex()} rejected the tunnel join request.")
         self._my_route.candidate_node.conn_state = ConnectionState.ConnectionClosed
 
-    def _handle_tunnel_data_forward(self, peer_ip: IPv6Address, peer_port: Int, req: TunnelDataForward) -> None:
+    def _handle_tunnel_data_forward(self, peer_ip: IPv6Address, peer_port: Int, req: TunnelDataForward, tun_req: EncryptedRequest) -> None:
         """!
         Nodes that handle a TunnelDataForward request are always relay nodes. However, because the route owner tells
         itself to send the tunnel request, the route owner is also acts as a pre-entry relay node that will handle this
@@ -323,7 +326,7 @@ class Layer2(LayerN):
         """
 
         # Unwrap the request and get the internal request object and send it over a secure connection.
-        next_conn_tok = self._route_forward_token_map[req.conn_tok]
+        next_conn_tok = self._route_forward_token_map[tun_req.conn_tok]
         next_conn = self._stack._layer4._conversations[next_conn_tok]
         req = RawRequest.deserialize(req.data)
         self._send_secure(next_conn, req)
