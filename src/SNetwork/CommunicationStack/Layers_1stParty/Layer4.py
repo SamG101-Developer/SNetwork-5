@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from enum import Enum
 from ipaddress import IPv6Address
 from threading import Thread
 from typing import TYPE_CHECKING
 
 from SNetwork.CommunicationStack.Isolation import cross_isolation, strict_isolation
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, Connection, ConnectionState, \
-    RawRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, ConnectionState, RawRequest
 from SNetwork.Config import TOLERANCE_CERTIFICATE_SIGNATURE
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.Hash import Hasher, HashAlgorithm
@@ -23,14 +21,6 @@ if TYPE_CHECKING:
     from SNetwork.Utils.Types import Bytes, Optional, Dict, Int, Str
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
-
-
-class Layer4Protocol(LayerNProtocol, Enum):
-    ConnectionRequest = 0x01
-    ConnectionAccept = 0x02
-    ConnectionAck = 0x03
-    ConnectionClose = 0x04
-    ConnectionData = 0x05
 
 
 class Layer4(LayerN):
@@ -79,7 +69,7 @@ class Layer4(LayerN):
         reason: Str
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, Layer4Protocol, socket, isolated_logger(LoggerHandlers.LAYER_4))
+        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_4))
 
         # Get the node identifier and static secret key.
         self._self_id = node_info.identifier
@@ -140,34 +130,34 @@ class Layer4(LayerN):
         state = self._conversations[token].conn_state if token in self._conversations else ConnectionState.NotConnected
 
         # Match the command to the appropriate handler.
-        match req.proto:
+        match req:
 
             # Handle a request to establish a connection from a non-connected token.
-            case Layer4Protocol.ConnectionRequest if state == ConnectionState.NotConnected:
+            case Layer4.ConnectionRequest() if state == ConnectionState.NotConnected:
                 thread = Thread(target=self._handle_connection_request, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle a response from a node that a connection request has been sent to.
-            case Layer4Protocol.ConnectionAccept if state == ConnectionState.PendingConnection:
+            case Layer4.ConnectionAccept() if state == ConnectionState.PendingConnection:
                 thread = Thread(target=self._handle_connection_accept, args=(req,))
                 thread.start()
 
             # Handle a response from a node that has ACKed a connection acceptance.
-            case Layer4Protocol.ConnectionAck if state == ConnectionState.PendingConnection:
+            case Layer4.ConnectionAck() if state == ConnectionState.PendingConnection:
                 thread = Thread(target=self._handle_connection_ack, args=(req,))
                 thread.start()
 
             # Handle a close connection request from a node that a connection has been established with.
-            case Layer4Protocol.ConnectionClose:
+            case Layer4.ConnectionClose():
                 thread = Thread(target=self._handle_connection_close, args=(req,))
                 thread.start()
 
             # Handle either an invalid command from a connected token, or an invalid command/state combination.
             case _:
-                self._logger.warning(f"Received invalid command from token {token}.")
+                self._logger.warning(f"Received invalid '{req}' request from '{req.conn_tok}'.")
                 self._logger.warning(f"State: {state}")
 
-    def _handle_connection_request(self, peer_ip: IPv6Address, peer_port: Int, req: ConnectionRequest) -> None:
+    def _handle_connection_request(self, peer_ip: IPv6Address, peer_port: Int, req: Layer4.ConnectionRequest) -> None:
         # Create the Connection object to track the conversation.
         conn = Connection(
             peer_ip=peer_ip, peer_port=peer_port,
@@ -215,7 +205,7 @@ class Layer4(LayerN):
         conn.conn_state = ConnectionState.PendingConnection
         self._conversations[conn.conn_tok] = conn
 
-    def _handle_connection_accept(self, req: ConnectionAccept) -> None:
+    def _handle_connection_accept(self, req: Layer4.ConnectionAccept) -> None:
         # Get the connection object for this request.
         conn = self._conversations[req.conn_tok]
 
@@ -253,7 +243,7 @@ class Layer4(LayerN):
         conn.conn_state = ConnectionState.ConnectionOpen
         self._logger.info(f"Connection established with {conn.peer_id.hex()}.")
 
-    def _handle_connection_ack(self, req: ConnectionAck) -> None:
+    def _handle_connection_ack(self, req: Layer4.ConnectionAck) -> None:
         # Get the connection object for this request.
         conn = self._conversations[req.conn_tok]
 
@@ -272,7 +262,7 @@ class Layer4(LayerN):
         conn.conn_state = ConnectionState.ConnectionOpen
         self._logger.info(f"Connection established with {conn.peer_id.hex()}.")
 
-    def _handle_connection_close(self, req: ConnectionClose) -> None:
+    def _handle_connection_close(self, req: Layer4.ConnectionClose) -> None:
         # Get the connection object for this request.
         conn = self._conversations[req.conn_tok]
         self._logger.info(f"Connection closed: {req.reason}")

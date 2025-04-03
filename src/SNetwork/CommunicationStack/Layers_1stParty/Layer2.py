@@ -9,8 +9,8 @@ from ipaddress import IPv6Address
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, RawRequest, LayerNProtocol, Connection, \
-    ConnectionState, EncryptedRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, RawRequest, Connection, ConnectionState, \
+    EncryptedRequest
 from SNetwork.Config import TOLERANCE_CERTIFICATE_SIGNATURE, HOP_COUNT, DEFAULT_IPV6
 from SNetwork.QuantumCrypto.Certificate import X509Certificate
 from SNetwork.QuantumCrypto.QuantumKem import QuantumKem
@@ -24,15 +24,6 @@ if TYPE_CHECKING:
     from SNetwork.Utils.Types import Bytes, Optional, Dict, Int, List
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
-
-
-class Layer2Protocol(LayerNProtocol, Enum):
-    RouteExtensionRequest = 0x01
-    TunnelJoinRequest = 0x02
-    TunnelJoinAccept = 0x03
-    TunnelJoinReject = 0x04
-    TunnelDataForward = 0x05
-    TunnelDataBackward = 0x06
 
 
 class TunnelRejectionReason(Enum):
@@ -114,7 +105,7 @@ class Layer2(LayerN):
         data: Bytes
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, Layer2Protocol, socket, isolated_logger(LoggerHandlers.LAYER_2))
+        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_2))
 
         self._my_route = None
         self._route_forward_token_map = {}
@@ -187,41 +178,41 @@ class Layer2(LayerN):
         token = req.conn_tok
 
         # Match the command to the appropriate handler.
-        match req.proto:
+        match req:
 
             # Handle a request to extend a route in the network.
-            case Layer2Protocol.RouteExtensionRequest:
+            case Layer2.RouteExtensionRequest():
                 thread = Thread(target=self._handle_route_extension_request, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to join a tunnel.
-            case Layer2Protocol.TunnelJoinRequest:
+            case Layer2.TunnelJoinRequest():
                 thread = Thread(target=self._handle_tunnel_join_request, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle a request to accept a tunnel join.
-            case Layer2Protocol.TunnelJoinAccept:
+            case Layer2.TunnelJoinAccept():
                 thread = Thread(target=self._handle_tunnel_join_accept, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle a request to reject a tunnel join.
-            case Layer2Protocol.TunnelJoinReject:
+            case Layer2.TunnelJoinReject():
                 thread = Thread(target=self._handle_tunnel_join_reject, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle a request to forward data through a tunnel.
-            case Layer2Protocol.TunnelDataForward:
+            case Layer2.TunnelDataForward():
                 thread = Thread(target=self._handle_tunnel_data_forward, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to backward data through a tunnel.
-            case Layer2Protocol.TunnelDataBackward:
+            case Layer2.TunnelDataBackward():
                 thread = Thread(target=self._handle_tunnel_data_backward, args=(peer_ip, peer_port, req))
                 thread.start()
 
-            # Handle either an invalid command from a connected token, or an invalid command/state combination.
+            # Handle either an invalid command from a connected token.
             case _:
-                self._logger.warning(f"Received invalid command from token {token}.")
+                self._logger.warning(f"Received invalid '{req}' request from '{req.conn_tok}'.")
 
     def _handle_route_extension_request(self, peer_ip: IPv6Address, peer_port: Int, req: RouteExtensionRequest, tun_req: EncryptedRequest) -> None:
         self._logger.info(f"Received route extension request from {peer_ip}:{peer_port}")
@@ -374,7 +365,7 @@ class Layer2(LayerN):
 
         # Create the packaged request for the target node.
         self.attach_metadata(node_list[0], req)
-        self._logger.info(f"Tunnelling '{req.proto}' request {hops} hops forwards.")
+        self._logger.info(f"Tunnelling '{req}' request {hops} hops forwards.")
         ciphertext = SymmetricEncryption.encrypt(data=req.serialize(), key=node_list[0].e2e_key)
         req = EncryptedRequest(conn_tok=node_list[0].conn_tok, ciphertext=ciphertext)
 

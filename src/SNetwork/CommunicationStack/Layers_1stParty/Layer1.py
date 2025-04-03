@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from ipaddress import IPv6Address
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, LayerNProtocol, RawRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, Connection, RawRequest
 from SNetwork.CommunicationStack.Layers_2ndParty.Layer1_Abstract import Layer1_Abstract
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Socket import Socket
@@ -15,10 +14,6 @@ from SNetwork.Utils.Types import Int, List, Type
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
-
-
-class Layer1Protocol(LayerNProtocol, Enum):
-    pass
 
 
 class Layer1(LayerN):
@@ -35,7 +30,7 @@ class Layer1(LayerN):
         response: RawRequest
 
     def __init__(self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket) -> None:
-        super().__init__(stack, node_info, Layer1Protocol, socket, isolated_logger(LoggerHandlers.LAYER_1))
+        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_1))
         self._layer_applications = []
         self._logger.info("Layer 1 Ready")
 
@@ -71,14 +66,18 @@ class Layer1(LayerN):
         match req:
 
             # Handle an application layer request.
-            case Layer1.ApplicationLayerRequest:
+            case Layer1.ApplicationLayerRequest():
                 thread = Thread(target=self._handle_application_layer_request, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Handle an application layer response.
-            case Layer1.ApplicationLayerResponse:
+            case Layer1.ApplicationLayerResponse():
                 thread = Thread(target=self._handle_application_layer_response, args=(peer_ip, peer_port, req))
                 thread.start()
+
+            # Handle either an invalid command from a connected token.
+            case _:
+                self._logger.warning(f"Received invalid '{req}' request from '{req.conn_tok}'.")
 
     def _send(self, conn: Connection, req: RawRequest) -> None:
         raise NotImplementedError("Layer 1 does not send data directly. Use Layer 2 tunneling instead.")

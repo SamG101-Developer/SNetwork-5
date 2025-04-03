@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from SNetwork.CommunicationStack.Isolation import strict_isolation
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Socket import Socket
-from SNetwork.Utils.Types import Bytes, Int, Optional, Tuple, Bool, Type, Str
+from SNetwork.Utils.Types import Bytes, Int, Optional, Bool, Type
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -58,12 +58,6 @@ class Connection:
         return self.conn_state == ConnectionState.ConnectionClosed
 
 
-class LayerNProtocol(Enum):
-    """
-    A class implemented onto each protocol enumeration defined at each layer of the network stack.
-    """
-
-
 @dataclass(kw_only=True)
 class AbstractRequest:
     def serialize(self) -> Bytes:
@@ -84,8 +78,10 @@ class AbstractRequest:
 @dataclass(kw_only=True)
 class RawRequest(AbstractRequest):
     conn_tok: Bytes = b""
-    proto: LayerNProtocol = None
     secure: Bool = False
+
+    def __str__(self) -> str:
+        return type(self).__name__
 
 
 @dataclass(kw_only=True)
@@ -107,11 +103,10 @@ class LayerN:
 
     _stack: CommunicationStack
     _self_node_info: Optional[KeyStoreData]
-    _proto: Type[LayerNProtocol]
     _socket: Socket
     _logger: Logger
 
-    def __init__(self, stack: CommunicationStack, node_info: Optional[KeyStoreData], protocol: Type[LayerNProtocol], socket: Socket, logger: Logger):
+    def __init__(self, stack: CommunicationStack, node_info: Optional[KeyStoreData], socket: Socket, logger: Logger):
         """
         The constructor for the LayerN class. This method creates a new socket object, which is used to send and receive
         data. The socket type is defined by the socket_type parameter, which defaults to SOCK_DGRAM. The only time UDP
@@ -122,7 +117,6 @@ class LayerN:
         # Initialize the layer's connection attributes.
         self._socket = socket
         self._self_node_info = node_info
-        self._proto = protocol
         self._stack = stack
         self._logger = logger
 
@@ -147,7 +141,7 @@ class LayerN:
         serialized = req.serialize()
 
         self._logger.debug(
-            f"-> Sending raw '{req.proto}' ({len(serialized)}-byte) request to "
+            f"-> Sending raw '{req}' ({len(serialized)}-byte) request to "
             f"{conn.peer_id.hex()}@{conn.peer_ip}:{conn.peer_port}")
         self._socket.sendto(serialized, conn.peer_ip, conn.peer_port)
 
@@ -178,4 +172,3 @@ class LayerN:
 
     def attach_metadata(self, conn: Connection, req: RawRequest) -> None:
         req.conn_tok = conn.conn_tok
-        req.proto = self._proto.__members__.get(type(req).__name__, None)

@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass
-from enum import Enum
 from ipaddress import IPv6Address
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, LayerNProtocol, RawRequest
+from SNetwork.CommunicationStack.Layers_1stParty.LayerN import LayerN, RawRequest
 from SNetwork.Config import PROFILE_CACHE, DIRECTORY_SERVICE_NODE_CACHE
 from SNetwork.Managers.DirectoryServiceManager import DirectoryServiceManager
 from SNetwork.Managers.KeyManager import KeyStoreData
@@ -22,23 +21,6 @@ from SNetwork.Utils.Types import Optional, Bytes, Int, Tuple, List, Dict, Str
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
-
-
-class LayerDProtocol(LayerNProtocol, Enum):
-    BootstrapRequest = 0x05
-    BootstrapResponse = 0x06
-
-
-@dataclass(kw_only=True)
-class BootstrapRequest(RawRequest):
-    identifier: Bytes
-    certificate: X509Certificate
-
-
-@dataclass(kw_only=True)
-class BootstrapResponse(RawRequest):
-    node_info: List[Tuple[IPv6Address, Int, Bytes]]
-    signature: SignedMessagePair
 
 
 class LayerD(LayerN):
@@ -59,12 +41,22 @@ class LayerD(LayerN):
     _node_cache: List[Tuple[IPv6Address, Int, Bytes]]
     _node_cache_file: str
 
+    @dataclass(kw_only=True)
+    class BootstrapRequest(RawRequest):
+        identifier: Bytes
+        certificate: X509Certificate
+
+    @dataclass(kw_only=True)
+    class BootstrapResponse(RawRequest):
+        node_info: List[Tuple[IPv6Address, Int, Bytes]]
+        signature: SignedMessagePair
+
     def __init__(
             self, stack: CommunicationStack, node_info: KeyStoreData, socket: Socket, is_directory_service: Str,
             identifier: Bytes, certificate: X509Certificate,
             directory_service_static_key_pair: Optional[AsymmetricKeyPair] = None) -> None:
 
-        super().__init__(stack, node_info, LayerDProtocol, socket, isolated_logger(LoggerHandlers.LAYER_D))
+        super().__init__(stack, node_info, socket, isolated_logger(LoggerHandlers.LAYER_D))
         self._stack._layerD = self
 
         self._self_id = identifier
@@ -108,25 +100,26 @@ class LayerD(LayerN):
                 return
 
             # Send the bootstrap request to the directory service.
-            self._send_secure(conn, BootstrapRequest(identifier=self._self_id, certificate=self._self_cert))
+            self._send_secure(conn, LayerD.BootstrapRequest(identifier=self._self_id, certificate=self._self_cert))
 
     def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest) -> None:
         # Deserialize the request and call the appropriate handler.
 
-        match req.proto:
+        match req:
+
             # Directory service will handle a bootstrap request.
-            case LayerDProtocol.BootstrapRequest if self._is_directory_service:
+            case LayerD.BootstrapRequest() if self._is_directory_service:
                 thread = Thread(target=self._handle_bootstrap_request, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Nodes will handle a bootstrap response.
-            case LayerDProtocol.BootstrapResponse if not self._is_directory_service:
+            case LayerD.BootstrapResponse() if not self._is_directory_service:
                 thread = Thread(target=self._handle_bootstrap_response, args=(peer_ip, peer_port, req))
                 thread.start()
 
             # Default case
             case _:
-                self._logger.error(f"Invalid request received: {req.proto}")
+                self._logger.error(f"Invalid request received: {req}")
 
     def _handle_bootstrap_request(self, peer_ip: IPv6Address, peer_port: Int, req: BootstrapRequest) -> None:
         # Extract the metadata from the request.
@@ -138,7 +131,7 @@ class LayerD(LayerN):
         # Choose some random nodes to send back.
         node_cache = random.sample(self._node_cache, min(5, len(self._node_cache)))
         signature  = QuantumSign.sign(skey=self._directory_service_static_key_pair.secret_key, msg=node_cache, aad=req.identifier)
-        self._send_secure(conn, BootstrapResponse(node_info=node_cache, signature=signature))
+        self._send_secure(conn, LayerD.BootstrapResponse(node_info=node_cache, signature=signature))
 
     def _handle_bootstrap_response(self, address: IPv6Address, port: Int, request: BootstrapResponse) -> None:
         # Check the signature of the response.

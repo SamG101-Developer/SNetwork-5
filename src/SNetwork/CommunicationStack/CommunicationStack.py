@@ -83,7 +83,7 @@ class CommunicationStack:
                 response = AbstractRequest.deserialize(data)
                 if not response: continue
             except pickle.UnpicklingError:
-                self._logger.warning(f"Received invalid response from {ip}:{port}.")
+                self._logger.warning(f"Received invalid-formatted data from {ip}:{port}.")
                 continue
 
             tunnelled_response = None
@@ -100,7 +100,7 @@ class CommunicationStack:
 
                     # If the response is still encrypted, it is a tunnel request.
                     if isinstance(response, EncryptedRequest):
-                        self._logger.debug(f"Received tunnelled encrypted request from {ip}:{port}.")
+                        self._logger.debug(f"Received tunnelled encrypted data from {ip}:{port}.")
                         tunnelled_response = response
                         e2e_key = self._layer2._participating_route_keys[response.conn_tok]
                         decrypted_data = SymmetricEncryption.decrypt(data=response.ciphertext, key=e2e_key)
@@ -108,10 +108,10 @@ class CommunicationStack:
 
                 # Otherwise, the connection is unknown, and the response is ignored.
                 else:
-                    logging.warning(f"Received response from unknown token {token}.")
+                    logging.warning(f"Received data from unknown token {token}.")
                     continue
 
-            self._logger.debug(f"<- Received '{response.proto}' response from {ip}:{port}.")
+            self._logger.debug(f"<- Received '{response}' from {ip}:{port}.")
 
             # Handle non-secure requests
             while not all(self._layers):
@@ -119,7 +119,7 @@ class CommunicationStack:
                 time.sleep(1)
                 continue
 
-            layer = [x for x in self._layers if hasattr(x, f"_handle_{caseconverter.snakecase(response.proto.name)}")][0]
+            layer = [x for x in self._layers if hasattr(x, f"_handle_{caseconverter.snakecase(str(response))}")][0]
             if tunnelled_response is None:
                 Thread(target=layer._handle_command, args=(ip, port, response)).start()
             else:
