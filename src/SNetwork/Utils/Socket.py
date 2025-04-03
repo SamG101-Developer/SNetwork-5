@@ -69,7 +69,6 @@ class Socket:
             port: The port number of the destination node.
         """
 
-        print(f"Sending data to {ip.exploded}:{port}")
         self._socket.sendto(data, (ip.exploded, port))
 
     def recvfrom(self, buffer_size: Int) -> tuple[bytes, IPv6Address, Int]:

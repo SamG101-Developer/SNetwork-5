@@ -42,7 +42,8 @@ class Node(AbstractNode):
         self._stack._logger.info(f"Node started.")
 
         # Join the routing network.
-        if self._info.hashed_username.hex() == "4d3c1c375eca1258e2980d7f4cfcbf027b6d1fedd761c8dcbeb8a84d5cd0dd5b":
+        tester = self._info.hashed_username.hex() == "e2fee945baae91d9f81c5d4c218f62f2d865ab650a5c8aaae721c537a469981e"
+        self._stack._layer1.register_application(Layer1_Http(self._stack, enable_proxy=tester))
+        if tester:
             time.sleep(2)
             self._stack._layer2.create_route()
-            self._stack._layer1.register_application(Layer1_Http(self._stack))
