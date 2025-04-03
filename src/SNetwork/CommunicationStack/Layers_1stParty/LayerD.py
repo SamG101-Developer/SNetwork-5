@@ -110,6 +110,24 @@ class LayerD(LayerN):
             # Send the bootstrap request to the directory service.
             self._send_secure(conn, BootstrapRequest(identifier=self._self_id, certificate=self._self_cert))
 
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest) -> None:
+        # Deserialize the request and call the appropriate handler.
+
+        match req.proto:
+            # Directory service will handle a bootstrap request.
+            case LayerDProtocol.BootstrapRequest if self._is_directory_service:
+                thread = Thread(target=self._handle_bootstrap_request, args=(peer_ip, peer_port, req))
+                thread.start()
+
+            # Nodes will handle a bootstrap response.
+            case LayerDProtocol.BootstrapResponse if not self._is_directory_service:
+                thread = Thread(target=self._handle_bootstrap_response, args=(peer_ip, peer_port, req))
+                thread.start()
+
+            # Default case
+            case _:
+                self._logger.error(f"Invalid request received: {req.proto}")
+
     def _handle_bootstrap_request(self, peer_ip: IPv6Address, peer_port: Int, req: BootstrapRequest) -> None:
         # Extract the metadata from the request.
         conn = self._stack._layer4._conversations[req.conn_tok]
@@ -140,21 +158,3 @@ class LayerD(LayerN):
         with SafeFileOpen(self._node_cache_file, "w") as file:
             current_cache |= {node_info[2].hex(): [node_info[0].packed.hex(), node_info[1], node_info[2].hex()] for node_info in request.node_info}
             json.dump(current_cache, file, indent=4)
-
-    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, request: RawRequest) -> None:
-        # Deserialize the request and call the appropriate handler.
-
-        match request.proto:
-            # Directory service will handle a bootstrap request.
-            case LayerDProtocol.BootstrapRequest if self._is_directory_service:
-                thread = Thread(target=self._handle_bootstrap_request, args=(peer_ip, peer_port, request))
-                thread.start()
-
-            # Nodes will handle a bootstrap response.
-            case LayerDProtocol.BootstrapResponse if not self._is_directory_service:
-                thread = Thread(target=self._handle_bootstrap_response, args=(peer_ip, peer_port, request))
-                thread.start()
-
-            # Default case
-            case _:
-                self._logger.error(f"Invalid request received: {request.proto}")
