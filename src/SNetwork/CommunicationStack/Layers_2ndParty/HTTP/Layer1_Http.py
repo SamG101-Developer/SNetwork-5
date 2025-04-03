@@ -20,6 +20,37 @@ if TYPE_CHECKING:
 HTTP_OK = b"HTTP/1.1 200 Connection Established\r\n\r\n"
 
 
+class SelectableBytesIO(BytesIO):
+    """
+    A subclass of BytesIO that can be used with select.select. This allows the BytesIO object to be used as a
+    socket-like object, which can be used for reading and writing data.
+    """
+
+    _notif_sock: socket.socket
+    _write_sock: socket.socket
+
+    def __init__(self, initial_bytes: bytes = b"") -> None:
+        super().__init__(initial_bytes)
+        self._notif_sock, self._write_sock = socket.socketpair()
+
+    def fileno(self) -> int:
+        return self._notif_sock.fileno()
+
+    def write(self, buffer, /) -> None:
+        super().write(buffer)
+        self._write_sock.send(b"\x01")
+
+    def read(self, size: int = -1) -> bytes:
+        data = super().read(size)
+        if data: self._notif_sock.recv(1)
+        return data
+
+    def close(self) -> None:
+        self._notif_sock.close()
+        self._write_sock.close()
+        super().close()
+
+
 class HttpParser:
     _http: bytes
 
@@ -52,8 +83,8 @@ class Layer1_Http(Layer1_Abstract):
     """
 
     _proxy_socket: socket.socket
-    _received_data_at_client: dict[int, BytesIO]
-    _received_data_at_server: dict[int, BytesIO]
+    _received_data_at_client: dict[int, SelectableBytesIO]
+    _received_data_at_server: dict[int, SelectableBytesIO]
     _mutex: Lock
 
     @dataclass(kw_only=True)
@@ -119,7 +150,7 @@ class Layer1_Http(Layer1_Abstract):
         self._stack._layer1.tunnel_application_data_forwards(Layer1_Http, http_connect_request)
 
         # Create the response selectable-object that is interacted with from Layer1.
-        self._received_data_at_client[client_socket_id] = routing_entry_point = BytesIO()
+        self._received_data_at_client[client_socket_id] = routing_entry_point = SelectableBytesIO()
         client_socket.sendall(HTTP_OK)
 
         # Start data exchange between the client and routing entry point.
@@ -162,7 +193,7 @@ class Layer1_Http(Layer1_Abstract):
         internet_socket.connect((req.host, 443))
 
         # Save the connection against the client socket identifier.
-        self._received_data_at_server[req.client_sock_id] = routing_exit_point = BytesIO()
+        self._received_data_at_server[req.client_sock_id] = routing_exit_point = SelectableBytesIO()
         self._handle_data_exchange_as_server(internet_socket, routing_exit_point, req.client_sock_id, tun_req.conn_tok)
 
     def _handle_http_data_to_server(self, peer_ip: IPv6Address, peer_port: Int, req: Layer1_Http.HttpDataToServer, tun_req: EncryptedRequest) -> None:
