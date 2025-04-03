@@ -12,6 +12,7 @@ from SNetwork.CommunicationStack.Layers_1stParty.Layer3 import Layer3
 from SNetwork.CommunicationStack.Layers_1stParty.Layer4 import Layer4
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import AbstractRequest, EncryptedRequest
+from SNetwork.CommunicationStack.Layers_2ndParty.HTTP.Layer1_Http import Layer1_Http
 from SNetwork.Managers.KeyManager import KeyStoreData
 from SNetwork.QuantumCrypto.Symmetric import SymmetricEncryption
 from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
@@ -64,7 +65,10 @@ class CommunicationStack:
         self._layer4 = Layer4(self, info, self._socket)
         self._layer3 = Layer3(self, info, self._socket)
         self._layer2 = Layer2(self, info, self._socket)
-        self._layer1 = Layer1(self, info, self._socket, None)  # LayerHTTP(self))
+        self._layer1 = Layer1(self, info, self._socket)
+
+        # Register known application layers.
+        pass
 
     @property
     def _layers(self):
