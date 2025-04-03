@@ -21,7 +21,7 @@ from SNetwork.Utils.Logger import isolated_logger, LoggerHandlers
 from SNetwork.Utils.Socket import Socket
 
 if TYPE_CHECKING:
-    from SNetwork.Utils.Types import Bytes, Optional, Dict, Int, List
+    from SNetwork.Utils.Types import Bytes, Optional, Dict, Int, List, Bool
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.Managers.KeyManager import KeyStoreData
 
@@ -47,6 +47,7 @@ class Route:
     entry_token: Bytes  # Connection identifier to the entry node
     nodes: List[Connection] = field(default_factory=list, init=False)
     candidate_node: Optional[Connection] = field(default=None, init=False)
+    ready: bool = field(default=False, init=False)
 
 
 class Layer2(LayerN):
@@ -158,7 +159,7 @@ class Layer2(LayerN):
             self._send_tunnel_forwards(Layer2.RouteExtensionRequest(
                 route_tok=candidate_node.conn_tok, route_owner_epk=candidate_node.self_epk,
                 next_node_ip=candidate_node.peer_ip, next_node_port=candidate_node.peer_port,
-                next_node_id=candidate_node.peer_id), len(self._my_route.nodes))
+                next_node_id=candidate_node.peer_id), hops=len(self._my_route.nodes), for_route_setup=True)
 
             # Wait for either the candidate node to accept or reject the connection.
             while not (candidate_node.is_accepted() or candidate_node.is_rejected()):
@@ -169,6 +170,7 @@ class Layer2(LayerN):
                 self._logger.info(f"Candidate node {candidate_node.peer_id.hex()} joined the route.")
                 self._my_route.nodes.append(candidate_node)
 
+        self._my_route.ready = True
         self._logger.info("Route created successfully.")
 
     def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest, tun_req: Optional[EncryptedRequest] = None) -> None:
@@ -359,7 +361,10 @@ class Layer2(LayerN):
         # Handle the internal request.
         self._send_secure(self._self_conn, req)
 
-    def _send_tunnel_forwards(self, req: RawRequest, hops: Int = HOP_COUNT) -> None:
+    def _send_tunnel_forwards(self, req: RawRequest, hops: Int = HOP_COUNT + 1, for_route_setup: Bool = False) -> None:
+        while not for_route_setup and not self._my_route.ready:
+            continue
+
         # Get the list of nodes in reverse order.
         node_list = list(reversed(self._my_route.nodes[:hops]))
 
