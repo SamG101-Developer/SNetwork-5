@@ -101,6 +101,7 @@ class LogMessageScroller(QScrollArea):
         for i in range(self._log_message_display.layout().count()):
             log_message = self._log_message_display.nth_message(i)
             scroller.widget().add_new_log_message(log_message)
+        scroller.verticalScrollBar().setValue(scroller.verticalScrollBar().maximum())
 
         save_to_file_button = QPushButton("Save to file")
         save_to_file_button.clicked.connect(self._save_to_file)

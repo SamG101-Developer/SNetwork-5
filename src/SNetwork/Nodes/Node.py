@@ -3,6 +3,7 @@ from ipaddress import IPv6Address
 
 from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
 from SNetwork.CommunicationStack.Layers_1stParty.LayerD import LayerD
+from SNetwork.CommunicationStack.Layers_2ndParty.HTTP.Layer1_Http import Layer1_Http
 from SNetwork.Managers.KeyManager import KeyManager
 from SNetwork.Nodes.AbstractNode import AbstractNode
 from SNetwork.Utils.Types import Bytes, Int, Tuple, Dict
@@ -44,3 +45,4 @@ class Node(AbstractNode):
         if self._info.hashed_username.hex() == "4d3c1c375eca1258e2980d7f4cfcbf027b6d1fedd761c8dcbeb8a84d5cd0dd5b":
             time.sleep(2)
             self._stack._layer2.create_route()
+            self._stack._layer1.register_application(Layer1_Http(self._stack))
