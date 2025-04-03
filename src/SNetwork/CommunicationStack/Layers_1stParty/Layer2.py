@@ -164,10 +164,10 @@ class Layer2(LayerN):
             self._logger.info(f"Chosen candidate node {candidate_node.peer_id.hex()}@{candidate_node.peer_ip}:{candidate_node.peer_port}.")
 
             # Send the extension request to the last node in the route so far.
-            self._send_tunnel_forwards(len(self._my_route.nodes), Layer2.RouteExtensionRequest(
+            self._send_tunnel_forwards(Layer2.RouteExtensionRequest(
                 route_tok=candidate_node.conn_tok, route_owner_epk=candidate_node.self_epk,
                 next_node_ip=candidate_node.peer_ip, next_node_port=candidate_node.peer_port,
-                next_node_id=candidate_node.peer_id))
+                next_node_id=candidate_node.peer_id), len(self._my_route.nodes))
 
             # Wait for either the candidate node to accept or reject the connection.
             while not (candidate_node.is_accepted() or candidate_node.is_rejected()):
@@ -241,9 +241,6 @@ class Layer2(LayerN):
         tunnel_join_request = Layer2.TunnelJoinRequest(route_token=req.route_tok, route_owner_epk=req.route_owner_epk)
         self._route_forward_token_map[prev_conn.conn_tok] = next_conn.conn_tok
         self._route_reverse_token_map[next_conn.conn_tok] = prev_conn.conn_tok
-
-        self._logger.info(f"Added route token mapping forward: {prev_conn.conn_tok.hex()} -> {next_conn.conn_tok.hex()}")
-        self._logger.info(f"Added route token mapping reverse: {next_conn.conn_tok.hex()} -> {prev_conn.conn_tok.hex()}")
         self._send_secure(next_conn, tunnel_join_request)
 
     def _handle_tunnel_join_request(self, peer_ip: IPv6Address, peer_port: Int, req: TunnelJoinRequest) -> None:
@@ -275,10 +272,10 @@ class Layer2(LayerN):
     def _handle_tunnel_join_accept(self, peer_ip: IPv6Address, peer_port: Int, req: TunnelJoinAccept) -> None:
         self._logger.info(f"Received tunnel join accept from {peer_ip}:{peer_port}")
 
-        # If the route token is not for this node's route, send the request backwards.
+        # If the route token is not for this node's route, tunnel the request backwards.
         if self._my_route is None or self._my_route.candidate_node.conn_tok != req.route_token:
             prev_conn = self._stack._layer4._conversations[self._route_reverse_token_map[req.conn_tok]]
-            self._send_secure(prev_conn, req)
+            self._send_tunnel_backwards(prev_conn, req)
             return
 
         # Check the node identifier on the acceptor certificate matches the candidate node.
@@ -351,12 +348,14 @@ class Layer2(LayerN):
             return
 
         # Route owner decrypts all the layers of encryption and handles the internal request.
-        if self._my_route is None or self._my_route.route_token != req.conn_tok:
+        if self._my_route is None or self._my_route.nodes[0].conn_tok != req.conn_tok:
             self._logger.warning(f"Received invalid tunnel data backward request from {req.conn_tok.hex()}.")
             return
 
         # Decrypt the request and handle it.
         for node in self._my_route.nodes:
+
+            # todo: check every node tunnel token layered in the requests
 
             # Remove the layer of encryption from each node.
             req = RawRequest.deserialize(req.data)
@@ -369,7 +368,7 @@ class Layer2(LayerN):
         # Handle the internal request.
         self._send_secure(self._self_conn, req)
 
-    def _send_tunnel_forwards(self, hops: Int, req: RawRequest) -> None:
+    def _send_tunnel_forwards(self, req: RawRequest, hops: Int = HOP_COUNT) -> None:
         # Get the list of nodes in reverse order.
         node_list = list(reversed(self._my_route.nodes[:hops]))
 
@@ -390,10 +389,10 @@ class Layer2(LayerN):
         self._logger.info(f"Sending tunnelled message to first node in route: {self._my_route.nodes[0].peer_id.hex()}")
         self._send_secure(self._my_route.nodes[0], req)
 
-    def _send_tunnel_backwards(self, prev_conn: Connection, req: RawRequest, route_token: Bytes) -> None:
+    def _send_tunnel_backwards(self, prev_conn: Connection, req: RawRequest) -> None:
         # Create an encrypted request to send to the previous node.
         self.attach_metadata(prev_conn, req)
-        ciphertext = SymmetricEncryption.encrypt(data=req.serialize(), key=self._participating_route_keys[route_token])
-        req = EncryptedRequest(conn_tok=route_token, ciphertext=ciphertext)
+        ciphertext = SymmetricEncryption.encrypt(data=req.serialize(), key=self._participating_route_keys[prev_conn.conn_tok])
+        req = EncryptedRequest(conn_tok=prev_conn.conn_tok, ciphertext=ciphertext)
         req = Layer2.TunnelDataBackward(data=req.serialize())
         self._send_secure(prev_conn, req)
