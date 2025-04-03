@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
     from SNetwork.CommunicationStack.Layers_1stParty.LayerN import RawRequest
-    from SNetwork.Utils.Types import Int
+    from SNetwork.Utils.Types import Int, Optional
 
 
 class Layer1_Abstract(ABC):
@@ -22,5 +22,5 @@ class Layer1_Abstract(ABC):
         self._stack = stack
 
     @abstractmethod
-    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest, tun_req: Optional[RawRequest] = None) -> None:
         ...

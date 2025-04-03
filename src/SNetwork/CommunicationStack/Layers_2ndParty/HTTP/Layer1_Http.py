@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import socket
 from dataclasses import dataclass
-from io import BytesIO
 from ipaddress import IPv6Address
 from threading import Thread, Lock
 from typing import TYPE_CHECKING
@@ -11,7 +10,7 @@ import select
 
 from SNetwork.CommunicationStack.Layers_1stParty.LayerN import RawRequest, EncryptedRequest
 from SNetwork.CommunicationStack.Layers_2ndParty.Layer1_Abstract import Layer1_Abstract
-from SNetwork.Utils.Types import Int
+from SNetwork.Utils.Types import Int, Optional
 
 if TYPE_CHECKING:
     from SNetwork.CommunicationStack.CommunicationStack import CommunicationStack
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
 HTTP_OK = b"HTTP/1.1 200 Connection Established\r\n\r\n"
 
 
-class SelectableBytesIO(BytesIO):
+class SelectableBytesIO:
     """
     A subclass of BytesIO that can be used with select.select. This allows the BytesIO object to be used as a
     socket-like object, which can be used for reading and writing data.
@@ -29,26 +28,22 @@ class SelectableBytesIO(BytesIO):
     _notif_sock: socket.socket
     _write_sock: socket.socket
 
-    def __init__(self, initial_bytes: bytes = b"") -> None:
-        super().__init__(initial_bytes)
+    def __init__(self) -> None:
+        super().__init__()
         self._notif_sock, self._write_sock = socket.socketpair()
 
     def fileno(self) -> int:
         return self._notif_sock.fileno()
 
     def write(self, buffer, /) -> None:
-        super().write(buffer)
-        self._write_sock.send(b"\x01")
+        self._write_sock.send(buffer)
 
-    def read(self, size: int = -1) -> bytes:
-        data = super().read(size)
-        if data: self._notif_sock.recv(1)
-        return data
+    def recv(self, size: int = -1) -> bytes:
+        return self._notif_sock.recv(size)
 
     def close(self) -> None:
         self._notif_sock.close()
         self._write_sock.close()
-        super().close()
 
 
 class HttpParser:
@@ -102,7 +97,7 @@ class Layer1_Http(Layer1_Abstract):
         client_sock_id: int
         data: bytes
 
-    def __init__(self, stack: CommunicationStack) -> None:
+    def __init__(self, stack: CommunicationStack, enable_proxy: bool = False) -> None:
         super().__init__(stack)
 
         # Initialize the attributes for the HTTP layer.
@@ -111,11 +106,12 @@ class Layer1_Http(Layer1_Abstract):
         self._mutex = Lock()
 
         # Create the TCP socket for the proxy.
-        self._proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._proxy_socket.bind(("127.0.0.1", 9090))
-        self._proxy_socket.listen(5)
-        Thread(target=self._start, daemon=True).start()
+        if enable_proxy:
+            self._proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._proxy_socket.bind(("127.0.0.1", 9090))
+            self._proxy_socket.listen(5)
+            Thread(target=self._start, daemon=True).start()
 
     def _start(self):
         """
@@ -156,7 +152,7 @@ class Layer1_Http(Layer1_Abstract):
         # Start data exchange between the client and routing entry point.
         self._handle_data_exchange_as_client(client_socket, routing_entry_point, client_socket_id)
 
-    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest) -> None:
+    def _handle_command(self, peer_ip: IPv6Address, peer_port: Int, req: RawRequest, tun_req: Optional[RawRequest] = None) -> None:
         """
         Handle a command from Layer1. This method is used to call the correct handler methods depending on the command
         received. The command and sublayer (HTTP, FTP, etc), is determined from the request. The appropriate handler is
@@ -167,19 +163,23 @@ class Layer1_Http(Layer1_Abstract):
         match req:
 
             # Handle a request to connect to a web server.
-            case Layer1_Http.HttpConnectToServer:
-                thread = Thread(target=self._handle_http_connect_to_server, args=(peer_ip, peer_port, req))
+            case Layer1_Http.HttpConnectToServer():
+                thread = Thread(target=self._handle_http_connect_to_server, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to send http data to a web server.
-            case Layer1_Http.HttpDataToServer:
-                thread = Thread(target=self._handle_http_data_to_server, args=(peer_ip, peer_port, req))
+            case Layer1_Http.HttpDataToServer():
+                thread = Thread(target=self._handle_http_data_to_server, args=(peer_ip, peer_port, req, tun_req))
                 thread.start()
 
             # Handle a request to send http data to a client.
-            case Layer1_Http.HttpDataToClient:
+            case Layer1_Http.HttpDataToClient():
                 thread = Thread(target=self._handle_http_data_to_client, args=(peer_ip, peer_port, req))
                 thread.start()
+
+            # Handle either an invalid command from a connected token.
+            case _:
+                self._stack._layer1._logger.warning(f"Received invalid '{req}' request from '{req.conn_tok}'.")
 
     def _handle_http_connect_to_server(self, peer_ip: IPv6Address, peer_port: Int, req: Layer1_Http.HttpConnectToServer, tun_req: EncryptedRequest) -> None:
         """
@@ -187,6 +187,8 @@ class Layer1_Http(Layer1_Abstract):
         server. This socket will communicate with the web server on behalf of the client, and will send all data back
         through the route.
         """
+
+        self._stack._layer1._logger.info(f"Handling HTTP CONNECT request to server {req.host}")
 
         # Create a connection to the web server over secure HTTP port 443.
         internet_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -202,9 +204,12 @@ class Layer1_Http(Layer1_Abstract):
         determined based on the client socket identifier.
         """
 
+        self._stack._layer1._logger.info(f"Handling HTTP data to server")
+        while req.client_sock_id not in self._received_data_at_server: pass
+
         # Write the data to the correct buffer, that will be sent to the web server.
-        with self._mutex:
-            self._received_data_at_server[req.client_sock_id].write(req.data)
+        self._stack._layer1._logger.info(f"Client ID exists => writing {len(req.data)} route exit buffer.")
+        self._received_data_at_server[req.client_sock_id].write(req.data)
 
     def _handle_http_data_to_client(self, peer_ip: IPv6Address, peer_port: Int, req: Layer1_Http.HttpDataToClient) -> None:
         """
@@ -213,10 +218,10 @@ class Layer1_Http(Layer1_Abstract):
         """
 
         # Write data to the correct buffer, that will be sent to the client socket.
-        with self._mutex:
-            self._received_data_at_client[req.client_sock_id].write(req.data)
+        self._stack._layer1._logger.info(f"Handling HTTP data to client")
+        self._received_data_at_client[req.client_sock_id].write(req.data)
 
-    def _handle_data_exchange_as_client(self, client_socket: socket.socket, routing_entry: BytesIO, client_sock_id: int) -> None:
+    def _handle_data_exchange_as_client(self, client_socket: socket.socket, routing_entry: SelectableBytesIO, client_sock_id: int) -> None:
         """
         The continuous data exchange between the client socket, and the routing entry point. This method will forward
         data on the client socket into the routing entry point; and data received through the route to the entry point,
@@ -245,16 +250,18 @@ class Layer1_Http(Layer1_Abstract):
                     # Send the data to the communication stack.
                     request = Layer1_Http.HttpDataToServer(client_sock_id=client_sock_id, data=data)
                     self._stack._layer1.tunnel_application_data_forwards(Layer1_Http, request)
+                    self._stack._layer1._logger.info(f"Sent HTTP data ({len(data)} bytes)  from client socket to routing entry point.")
 
                 else:
                     # Write the raw HTTP response back to the client socket.
                     client_socket.sendall(data)
+                    self._stack._layer1._logger.info(f"Sent HTTP data ({len(data)} bytes)  from routing entry point to client socket.")
 
         # Close the sockets.
         client_socket.close()
         routing_entry.close()
 
-    def _handle_data_exchange_as_server(self, server_socket: socket.socket, routing_exit: BytesIO, client_sock_id: int, prev_conn_tok: bytes) -> None:
+    def _handle_data_exchange_as_server(self, server_socket: socket.socket, routing_exit: SelectableBytesIO, client_sock_id: int, prev_conn_tok: bytes) -> None:
         """
         The continuous data exchange between the server socker, and the routing exit point. This method will forward
         data on the server socket into the routing exit point; and data received through the route to the exit point,
@@ -275,7 +282,7 @@ class Layer1_Http(Layer1_Abstract):
             for sock in readable:
 
                 # Receive the data from either of the sockets.
-                data = sock.recv(4096)
+                data = sock.recv(16384)
                 if data is None: break
 
                 # Determine the opposite socket.
@@ -284,14 +291,20 @@ class Layer1_Http(Layer1_Abstract):
                     request = Layer1_Http.HttpDataToClient(client_sock_id=client_sock_id, data=data)
                     prev_conn = self._stack._layer4._conversations[prev_conn_tok]
                     self._stack._layer1.tunnel_application_data_backwards(Layer1_Http, prev_conn, request)
+                    self._stack._layer1._logger.info(f"Sent HTTP data ({len(data)} bytes) from server socket to client's routing exit.")
 
                 else:
                     # Write the raw HTTP response to the server socket.
                     server_socket.sendall(data)
+                    self._stack._layer1._logger.info(f"Sent HTTP data ({len(data)} bytes) from client's routing exit to server socket.")
 
         # Close the sockets.
         server_socket.close()
         routing_exit.close()
+        self._received_data_at_server.pop(client_sock_id, None)
+        self._received_data_at_client.pop(client_sock_id, None)
+
+        self._stack._layer1._logger.info(f"Closed HTTP connection for client socket {client_sock_id}.")
 
     def __del__(self) -> None:
         for sock in self._received_data_at_client.values(): sock.close()
