@@ -121,7 +121,7 @@ class Layer1_Http(Layer1_Abstract):
 
         while True:
             client_socket, _ = self._proxy_socket.accept()
-            self._handle_proxy_request(client_socket)
+            Thread(target=self._handle_proxy_request, args=(client_socket,), daemon=True).start()
 
     def _handle_proxy_request(self, client_socket: socket.socket) -> None:
         """
@@ -242,7 +242,12 @@ class Layer1_Http(Layer1_Abstract):
             for sock in readable:
 
                 # Receive the data from either of the sockets.
-                data = sock.recv(4096)
+                try:
+                    data = sock.recv(16384)
+                except ConnectionResetError:
+                    errored.append(sock)
+                    break
+
                 if data is None: break
 
                 # Determine the opposite socket.
@@ -282,7 +287,12 @@ class Layer1_Http(Layer1_Abstract):
             for sock in readable:
 
                 # Receive the data from either of the sockets.
-                data = sock.recv(16384)
+                try:
+                    data = sock.recv(16384)
+                except ConnectionResetError:
+                    errored.append(sock)
+                    break
+
                 if data is None: break
 
                 # Determine the opposite socket.
