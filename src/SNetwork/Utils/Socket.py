@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ipaddress import IPv6Address
-from socket import socket as RawSocket, SOL_SOCKET, SO_REUSEADDR, AF_INET6, SOCK_DGRAM
+from socket import socket as RawSocket, SOL_SOCKET, AF_INET6, SOCK_DGRAM, SO_REUSEADDR, SO_RCVBUF, SO_SNDBUF
 from typing import TYPE_CHECKING
 from threading import Lock
 
@@ -38,6 +38,8 @@ class Socket:
 
         self._socket = RawSocket(family=AF_INET6, type=SOCK_DGRAM)
         self._socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self._socket.setsockopt(SOL_SOCKET, SO_RCVBUF, 65536)
+        self._socket.setsockopt(SOL_SOCKET, SO_SNDBUF, 65536)
 
     def bind(self, port: Int) -> None:
         """
