@@ -60,7 +60,8 @@ the existing route being able to tamper with data being exchanged to set up the 
     - Node C encapsulates `K` using `E = KEM(K, tPKac)`
     - Node C signs `S2 = Sign(E || T || tPKac || IDb, sSKc)`
     - Node C sends `TunnelAccept(T, E, S2, cert_c)` to Node A (via Node B)
-    - **TODO: including `S2` and `cert_c` allows deanonymisation**
+    - **Reverse tunnelling is used, so when Node D is connected too, Node B won't know who they are.**
+
 
 4. **Node A receives the tunnel accept from Node C**
     - Node A verifies `S2` using `sPKc` (checks `T = T'`, `tPKac = tPKac'`)
