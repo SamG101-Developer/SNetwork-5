@@ -359,9 +359,12 @@ class Layer2(LayerN):
                 break
 
         # Handle the internal request.
+        self._logger.info(f"Route owner fully unwrapped tunneled '{req}' request")
         self._send_secure(self._self_conn, req)
 
     def _send_tunnel_forwards(self, req: RawRequest, hops: Int = HOP_COUNT + 1, for_route_setup: Bool = False) -> None:
+        while not self._my_route:
+            continue
         while not for_route_setup and not self._my_route.ready:
             continue
 

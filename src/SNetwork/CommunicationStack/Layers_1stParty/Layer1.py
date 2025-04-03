@@ -41,7 +41,7 @@ class Layer1(LayerN):
         """
 
         self._layer_applications.append(application)
-        self._logger.info(f"Registered application: {application.__name__}")
+        self._logger.info(f"Registered application: {type(application).__name__}")
 
     def tunnel_application_data_forwards(self, application: Type[Layer1_Abstract], req: RawRequest) -> None:
         """
