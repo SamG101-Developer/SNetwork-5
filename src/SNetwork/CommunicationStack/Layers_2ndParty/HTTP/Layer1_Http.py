@@ -249,6 +249,7 @@ class Layer1_Http(Layer1_Abstract):
                     break
 
                 if data is None: break
+                if not data: continue
 
                 # Determine the opposite socket.
                 if sock is client_socket:
@@ -294,6 +295,7 @@ class Layer1_Http(Layer1_Abstract):
                     break
 
                 if data is None: break
+                if not data: continue
 
                 # Determine the opposite socket.
                 if sock is server_socket:
